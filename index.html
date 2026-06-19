@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bible Places Flat Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root {
+  --gold:#c9a227; --bg:#0f1623; --sb:#141e2e; --border:#1e2d42;
+  --text:#e2e8f0; --muted:#64748b; --sw:320px; --hover:#1e2d45; --input:#1a2438;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+
+#map{position:fixed;top:0;left:var(--sw);right:0;bottom:0;}
+
+#sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:var(--sw);
+  background:var(--sb);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:1000;
+  box-shadow:3px 0 20px rgba(0,0,0,0.4);
+}
+
+/* Header */
+.sb-header{
+  padding:13px 15px 11px;border-bottom:1px solid var(--border);
+  background:linear-gradient(135deg,#0d1520,#1a2640);flex-shrink:0;
+}
+.sb-logo{display:flex;align-items:center;gap:7px;font-size:0.92rem;font-weight:700;
+  color:var(--gold);font-family:'Georgia',serif;margin-bottom:2px;}
+.sb-logo-badge{background:var(--gold);color:#0f1623;font-size:0.56rem;font-weight:900;
+  padding:2px 5px;border-radius:3px;}
+.sb-subtitle{font-size:0.66rem;color:var(--muted);}
+
+/* Accordion panels */
+.acc-panel{border-bottom:1px solid var(--border);flex-shrink:0;}
+.acc-panel.places-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.acc-toggle{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  padding:9px 15px;background:none;border:none;color:var(--text);
+  font-size:0.72rem;font-weight:700;cursor:pointer;text-align:left;
+  text-transform:uppercase;letter-spacing:0.7px;transition:background .1s;
+}
+.acc-toggle:hover{background:var(--hover);}
+.acc-toggle .acc-arrow{font-size:0.65rem;color:var(--muted);transition:transform .2s;}
+.acc-toggle.open .acc-arrow{transform:rotate(180deg);}
+.acc-body{overflow:hidden;transition:max-height .25s ease;}
+.acc-body.closed{max-height:0 !important;}
+.acc-inner{padding:9px 15px 11px;}
+
+/* Search */
+.search-wrap{display:flex;gap:5px;}
+.search-wrap input{
+  flex:1;background:var(--input);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:4px;font-size:0.72rem;outline:none;transition:border-color .15s;
+}
+.search-wrap input:focus{border-color:var(--gold);}
+.search-wrap button{
+  background:var(--gold);color:#0f1623;border:none;border-radius:4px;
+  padding:5px 9px;font-size:0.70rem;font-weight:700;cursor:pointer;
+}
+#searchResults{margin-top:5px;}
+.sr-item{display:flex;align-items:center;gap:6px;font-size:0.70rem;
+  padding:3px 6px;border-radius:4px;cursor:pointer;color:var(--text);}
+.sr-item:hover{background:var(--hover);}
+.sr-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sr-name{font-weight:600;flex:1;}
+.sr-tag{color:var(--muted);font-size:0.60rem;}
+
+/* Layers */
+.layer-row{display:flex;gap:4px;flex-wrap:wrap;}
+.layer-btn{
+  padding:3px 8px;border-radius:20px;border:1.5px solid var(--border);
+  font-size:0.61rem;font-weight:600;cursor:pointer;background:var(--input);
+  color:var(--muted);transition:all .15s;
+}
+.layer-btn.active{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd;}
+
+/* Filter pills */
+.filter-row{display:flex;gap:4px;flex-wrap:wrap;}
+.filter-btn{
+  padding:2px 7px;border-radius:20px;border:1.5px solid transparent;
+  font-size:0.59rem;font-weight:600;cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;gap:3px;
+}
+.filter-btn.active{color:#fff;}
+.filter-btn:not(.active){background:var(--input);color:var(--muted);border-color:var(--border);}
+.filter-btn:not(.active):hover{border-color:#3b4f6b;color:var(--text);}
+.filter-btn[data-rg="all"].active{background:#1e3a5f;border-color:#3b82f6;}
+.filter-btn[data-rg="canaan"].active{background:#6b4c00;border-color:#c9a227;}
+.filter-btn[data-rg="egypt"].active{background:#6b2e00;border-color:#e07b39;}
+.filter-btn[data-rg="mesopot"].active{background:#3b1f7a;border-color:#7c5cbf;}
+.filter-btn[data-rg="anatolia"].active{background:#1a3a6b;border-color:#3b82f6;}
+.filter-btn[data-rg="greece"].active{background:#0e3a1a;border-color:#22c55e;}
+.filter-btn[data-rg="arabia"].active{background:#6b1a1a;border-color:#ef4444;}
+.filter-btn[data-rg="persia"].active{background:#0a3a42;border-color:#06b6d4;}
+.filter-btn[data-rg="other"].active{background:#2a3545;border-color:#94a3b8;}
+.fc{font-size:0.56rem;opacity:0.75;}
+
+/* Stats mini-row */
+.stats-row{display:flex;gap:5px;}
+.stat-box{flex:1;background:var(--input);border-radius:5px;padding:5px 7px;border:1px solid var(--border);}
+.stat-box .s-val{font-size:0.95rem;font-weight:800;color:var(--gold);}
+.stat-box .s-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px;}
+
+/* Accordion place list */
+.places-scroll{flex:1;overflow-y:auto;padding:4px 0;}
+.places-scroll::-webkit-scrollbar{width:3px;}
+.places-scroll::-webkit-scrollbar-thumb{background:#2a3d5c;border-radius:2px;}
+
+/* Region accordion groups inside places panel */
+.rg-group{}
+.rg-toggle{
+  width:100%;display:flex;align-items:center;gap:7px;
+  padding:6px 15px;background:none;border:none;cursor:pointer;
+  color:var(--muted);font-size:0.61rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;
+  transition:background .1s;
+}
+.rg-toggle:hover{background:rgba(255,255,255,0.03);}
+.rg-toggle .rg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.rg-toggle .rg-arrow{font-size:0.60rem;margin-left:auto;transition:transform .2s;}
+.rg-toggle.open .rg-arrow{transform:rotate(180deg);}
+.rg-toggle .rg-count{font-size:0.58rem;opacity:0.6;}
+.rg-items{overflow:hidden;transition:max-height .2s ease;}
+.rg-items.closed{max-height:0 !important;}
+
+.place-item{
+  display:flex;align-items:center;gap:7px;
+  padding:4px 15px 4px 28px;cursor:pointer;
+  transition:background .1s;font-size:0.73rem;
+  border-left:2.5px solid transparent;margin-bottom:1px;
+}
+.place-item:hover{background:var(--input);}
+.place-item.active{background:var(--hover);}
+.place-item .p-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.place-item .p-name{font-weight:600;flex:1;color:var(--text);}
+.place-item .p-tag{font-size:0.59rem;color:var(--muted);}
+
+/* Directions */
+.dir-stop{display:flex;gap:6px;align-items:center;margin-bottom:6px;position:relative;}
+.dir-stop-num{width:18px;height:18px;border-radius:50%;background:var(--gold);color:#0f1623;
+  font-size:0.60rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dir-stop input{
+  flex:1;background:var(--input);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:4px;font-size:0.70rem;outline:none;transition:border-color .15s;
+}
+.dir-stop input:focus{border-color:var(--gold);}
+.dir-stop .dir-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.85rem;
+  padding:0 2px;line-height:1;}
+.dir-stop .dir-del:hover{color:#ef4444;}
+.dir-autocomplete{
+  position:absolute;top:100%;left:24px;right:22px;background:#1a2438;
+  border:1px solid var(--border);border-radius:4px;z-index:500;
+  max-height:140px;overflow-y:auto;display:none;
+}
+.dir-ac-item{
+  padding:4px 8px;font-size:0.68rem;cursor:pointer;
+  display:flex;align-items:center;gap:6px;color:var(--text);
+}
+.dir-ac-item:hover{background:var(--hover);}
+.dir-actions{display:flex;gap:5px;margin-top:2px;}
+.dir-btn{
+  flex:1;padding:5px;border-radius:4px;border:none;font-size:0.65rem;font-weight:700;
+  cursor:pointer;transition:background .15s;
+}
+.dir-btn.primary{background:var(--gold);color:#0f1623;}
+.dir-btn.primary:hover{background:#b8911f;}
+.dir-btn.secondary{background:var(--input);color:var(--text);border:1px solid var(--border);}
+.dir-btn.secondary:hover{background:var(--hover);}
+.dir-total{font-size:0.64rem;color:var(--muted);margin-top:6px;text-align:center;}
+
+/* Footer */
+.sb-footer{
+  padding:7px 15px;font-size:0.61rem;color:var(--muted);line-height:1.4;
+  border-top:1px solid var(--border);background:#0f1623;flex-shrink:0;
+}
+
+/* Map controls */
+.map-btn{
+  position:fixed;z-index:999;
+  background:#141e2e;color:var(--gold);border:1px solid var(--border);
+  border-radius:6px;padding:6px 11px;font-size:0.68rem;font-weight:700;
+  cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);transition:background .15s;
+}
+.map-btn:hover{background:var(--hover);}
+#btnHome{bottom:20px;right:20px;}
+
+/* Popup */
+.leaflet-popup-content-wrapper{
+  background:#141e2e;color:#e2e8f0;border:1px solid #1e2d42;
+  border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.5);
+}
+.leaflet-popup-tip{background:#141e2e;}
+.leaflet-popup-content{margin:10px 14px;font-family:-apple-system,sans-serif;}
+.popup-name{font-size:0.92rem;font-weight:700;color:#c9a227;font-family:'Georgia',serif;margin-bottom:2px;}
+.popup-region{font-size:0.66rem;color:#64748b;margin-bottom:5px;}
+.popup-desc{font-size:0.72rem;color:#94a3b8;line-height:1.4;margin-bottom:4px;}
+.popup-ref{font-size:0.64rem;color:#c9a227;opacity:0.85;}
+.popup-dir-btn{
+  margin-top:7px;padding:4px 10px;background:var(--gold);color:#0f1623;
+  border:none;border-radius:4px;font-size:0.65rem;font-weight:700;cursor:pointer;
+}
+.popup-dir-btn:hover{background:#b8911f;}
+
+  /* Timeline panel */
+  #timelinePanel {
+    position: fixed; bottom: 0; left: var(--sw); right: 0;
+    background: rgba(14,22,35,0.96); border-top: 1px solid var(--border);
+    padding: 10px 20px 12px; display: none; flex-direction: column; gap: 7px;
+    z-index: 900; backdrop-filter: blur(4px);
+  }
+  .tl-top { display: flex; align-items: center; gap: 12px; }
+  #tlYearLabel {
+    font-size: 0.95rem; font-weight: 800; color: var(--gold);
+    font-family: 'Georgia', serif; min-width: 80px;
+  }
+  #tlSlider {
+    flex: 1; height: 4px; cursor: pointer; accent-color: var(--gold);
+  }
+  #tlPlayBtn {
+    background: var(--gold); color: #0f1623; border: none;
+    border-radius: 50%; width: 28px; height: 28px;
+    font-size: 0.75rem; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900;
+  }
+  .tl-eras { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tl-era-btn {
+    padding: 2px 8px; border-radius: 20px; border: 1.5px solid;
+    font-size: 0.58rem; font-weight: 700; cursor: pointer;
+    background: transparent; transition: opacity .2s;
+  }
+  #tlToggleBtn { font-size: 0.62rem; }
+  #tlToggleBtn.active { background: #1a3a5f; border-color: var(--gold); color: var(--gold); }
+
+
+  /* Character list */
+  .char-item {
+    display:flex;align-items:center;gap:7px;
+    padding:4px 15px;cursor:pointer;font-size:0.72rem;
+    border-left:2.5px solid transparent;transition:background .1s;
+  }
+  .char-item:hover{background:var(--hover);}
+  .char-item.active{background:#1e2d45;}
+  .char-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .char-name{font-weight:600;flex:1;color:var(--text);}
+  .char-years{font-size:0.58rem;color:var(--muted);}
+  .char-era-header{
+    font-size:0.60rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;
+    color:var(--muted);padding:7px 15px 2px;display:flex;align-items:center;gap:5px;
+  }
+  .char-era-line{flex:1;height:1px;background:var(--border);}
+
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="sb-header">
+    <div class="sb-logo">✦ BIBLE PLACES FLAT MAP <span class="sb-logo-badge">KJV</span></div>
+    <div class="sb-subtitle">194 named locations · Old &amp; New Testaments</div>
+  </div>
+
+  <!-- SEARCH accordion -->
+  <div class="acc-panel">
+    <button class="acc-toggle open" onclick="toggleAcc(this)">
+      🔍 Search <span class="acc-arrow">▼</span>
+    </button>
+    <div class="acc-body" style="max-height:200px;">
+      <div class="acc-inner" style="padding-bottom:8px;">
+        <div class="search-wrap">
+          <input id="searchInput" type="text" placeholder="Type a place name…"
+            oninput="doSearch(this.value)"
+            onkeydown="if(event.key==='Enter')commitSearch()"/>
+          <button onclick="commitSearch()">↵</button>
+        </div>
+        <div id="searchResults"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYERS accordion -->
+  <div class="acc-panel">
+    <button class="acc-toggle open" onclick="toggleAcc(this)">
+      🗺 Map Layer <span class="acc-arrow">▼</span>
+    </button>
+    <div class="acc-body" style="max-height:100px;">
+      <div class="acc-inner">
+        <div class="layer-row">
+          <button class="layer-btn active" data-layer="osm" onclick="setLayer('osm',this)">Street (EN)</button>
+          <button class="layer-btn" data-layer="topo" onclick="setLayer('topo',this)">Topography</button>
+          <button class="layer-btn" data-layer="satellite" onclick="setLayer('satellite',this)">Satellite</button>
+          <button class="layer-btn" data-layer="dark" onclick="setLayer('dark',this)">Dark</button>
+          <button class="layer-btn" id="ancientBtn" onclick="toggleAncientMap(this)" style="border-color:#8b5e3c;color:#c9a085;">🗺 Terrain Overlay</button>
+          <button class="layer-btn active" id="placesToggleBtn" onclick="togglePlaceMarkers(this)">📍 Places</button>
+        </div>
+        <div id="ancientNote" style="display:none;margin-top:6px;font-size:0.60rem;color:#94a3b8;line-height:1.5;">
+          <div style="display:flex;gap:4px;margin-bottom:4px;">
+            <button class="ancient-mode-btn layer-btn active" onclick="setAncientMode('historical',this)">Shaded Relief</button>
+            <button class="ancient-mode-btn layer-btn" onclick="setAncientMode('terrain',this)">Terrain</button>
+            <button class="ancient-mode-btn layer-btn" onclick="setAncientMode('physical',this)">Physical</button>
+          </div>
+          Terrain overlay — best at zoom 4–12. Works everywhere.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIRECTIONS accordion -->
+  <div class="acc-panel">
+    <button class="acc-toggle" onclick="toggleAcc(this)">
+      🧭 Directions <span class="acc-arrow">▼</span>
+    </button>
+    <div class="acc-body closed" style="max-height:0;">
+      <div class="acc-inner">
+        <div id="dirStops"></div>
+        <button class="dir-btn secondary" onclick="addStop()" style="width:100%;margin-bottom:7px;">+ Add Stop</button>
+        <div class="dir-actions">
+          <button class="dir-btn primary" onclick="runDirections()">Map Route</button>
+          <button class="dir-btn secondary" onclick="clearRoute()">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Route summary always visible outside accordion -->
+  <div id="dirTotal" style="display:none;padding:8px 15px;font-size:0.65rem;
+    color:#e2e8f0;background:#0f1a2b;border-bottom:1px solid var(--border);
+    line-height:1.5;"></div>
+
+  <!-- FILTER accordion -->
+  <div class="acc-panel">
+    <button class="acc-toggle open" onclick="toggleAcc(this)">
+      🏷 Filter by Region <span class="acc-arrow">▼</span>
+    </button>
+    <div class="acc-body" style="max-height:120px;">
+      <div class="acc-inner" style="padding-bottom:8px;">
+        <div class="filter-row">
+          <button class="filter-btn active" data-rg="all">All <span class="fc" id="cnt-all"></span></button>
+          <button class="filter-btn" data-rg="canaan" style="border-color:#c9a227">Canaan <span class="fc" id="cnt-canaan"></span></button>
+          <button class="filter-btn" data-rg="egypt" style="border-color:#e07b39">Egypt <span class="fc" id="cnt-egypt"></span></button>
+          <button class="filter-btn" data-rg="mesopot" style="border-color:#7c5cbf">Mesopotamia <span class="fc" id="cnt-mesopot"></span></button>
+          <button class="filter-btn" data-rg="anatolia" style="border-color:#3b82f6">Anatolia <span class="fc" id="cnt-anatolia"></span></button>
+          <button class="filter-btn" data-rg="greece" style="border-color:#22c55e">Greece &amp; Rome <span class="fc" id="cnt-greece"></span></button>
+          <button class="filter-btn" data-rg="arabia" style="border-color:#ef4444">Arabia <span class="fc" id="cnt-arabia"></span></button>
+          <button class="filter-btn" data-rg="persia" style="border-color:#06b6d4">Persia <span class="fc" id="cnt-persia"></span></button>
+          <button class="filter-btn" data-rg="other" style="border-color:#94a3b8">Other <span class="fc" id="cnt-other"></span></button>
+        </div>
+        <div class="stats-row" style="margin-top:8px;">
+          <div class="stat-box"><div class="s-val" id="s-places">–</div><div class="s-lbl">Shown</div></div>
+          <div class="stat-box"><div class="s-val" id="s-ot">–</div><div class="s-lbl">OT</div></div>
+          <div class="stat-box"><div class="s-val" id="s-nt">–</div><div class="s-lbl">NT</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARACTERS accordion -->
+  <div class="acc-panel">
+    <button class="acc-toggle" onclick="toggleAcc(this)">
+      🧍 Characters <span class="acc-arrow">▼</span>
+    </button>
+    <div class="acc-body closed" style="max-height:0;">
+      <div style="padding:6px 0 8px;max-height:260px;overflow-y:auto;" id="charList"></div>
+    </div>
+  </div>
+
+    <!-- PLACES accordion (flex:1 grows) -->
+  <div class="acc-panel places-panel">
+    <button class="acc-toggle" onclick="togglePlaces(this)">
+      📍 Places <span class="acc-arrow">▼</span>
+    </button>
+    <div class="places-scroll" id="placeList" style="display:none;"></div>
+  </div>
+
+  <div class="sb-footer" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Scroll/pinch zoom · Click marker</span>
+    <button class="layer-btn" id="tlToggleBtn" onclick="toggleTimeline()" style="font-size:0.62rem;">
+      🧍 Timeline
+    </button>
+  </div>
+</div>
+
+<div id="map"></div>
+<button class="map-btn" id="btnHome" onclick="resetView()">⌂ Reset View</button>
+
+<script>
+// ── DATA INJECTED HERE ────────────────────────────────────────────────────────
+const PLACES = [
+  // ── CANAAN / ISRAEL / JUDAH ──────────────────────────────────────────────
+  {name:"Jerusalem",rg:"canaan",lat:31.776,lng:35.234,desc:"Holy city; site of the Temple, crucifixion, and resurrection",ref:"Gen 14:18; Matt 21:1",testament:"Both"},
+  {name:"Bethlehem",rg:"canaan",lat:31.706,lng:35.201,desc:"Birthplace of David and Jesus Christ",ref:"Ruth 1:1; Luke 2:4",testament:"Both"},
+  {name:"Hebron",rg:"canaan",lat:31.532,lng:35.095,desc:"Where Abraham lived; first capital of David's kingdom",ref:"Gen 13:18; 2 Sam 2:11",testament:"OT"},
+  {name:"Jericho",rg:"canaan",lat:31.861,lng:35.444,desc:"First city conquered by Israel in Canaan; walls fell miraculously",ref:"Josh 6:1; Luke 18:35",testament:"Both"},
+  {name:"Shechem",rg:"canaan",lat:32.208,lng:35.281,desc:"Where Abraham built his first altar; Joseph buried here",ref:"Gen 12:6; Josh 24:32",testament:"OT"},
+  {name:"Shiloh",rg:"canaan",lat:31.989,lng:35.297,desc:"Home of the Tabernacle for generations before Jerusalem",ref:"Josh 18:1; 1 Sam 1:3",testament:"OT"},
+  {name:"Bethel",rg:"canaan",lat:31.927,lng:35.222,desc:"Jacob's vision of the heavenly ladder; sanctuary city",ref:"Gen 12:8; Gen 28:19",testament:"OT"},
+  {name:"Nazareth",rg:"canaan",lat:32.699,lng:35.303,desc:"Hometown of Jesus; where he grew up and began his ministry",ref:"Luke 2:39; Matt 2:23",testament:"NT"},
+  {name:"Capernaum",rg:"canaan",lat:32.881,lng:35.575,desc:"Jesus' ministry headquarters on the Sea of Galilee",ref:"Matt 4:13; Luke 4:31",testament:"NT"},
+  {name:"Cana",rg:"canaan",lat:32.745,lng:35.353,desc:"Site of Jesus' first miracle — water turned to wine",ref:"John 2:1",testament:"NT"},
+  {name:"Sea of Galilee",rg:"canaan",lat:32.833,lng:35.6,desc:"Lake where Jesus walked on water and called his disciples",ref:"Matt 4:18; John 6:19",testament:"NT"},
+  {name:"Jordan River",rg:"canaan",lat:31.83,lng:35.546,desc:"Israel crossed here; Jesus baptized by John",ref:"Josh 3:17; Matt 3:13",testament:"Both"},
+  {name:"Bethsaida",rg:"canaan",lat:32.906,lng:35.629,desc:"Hometown of Peter, Andrew, and Philip",ref:"John 1:44; Luke 9:10",testament:"NT"},
+  {name:"Caesarea Philippi",rg:"canaan",lat:33.248,lng:35.692,desc:"Where Peter confessed Jesus as Christ",ref:"Matt 16:13",testament:"NT"},
+  {name:"Samaria",rg:"canaan",lat:32.279,lng:35.195,desc:"Capital of the northern kingdom of Israel",ref:"1 Kgs 16:24; John 4:4",testament:"Both"},
+  {name:"Megiddo",rg:"canaan",lat:32.584,lng:35.183,desc:"Ancient fortress; Armageddon derives from Har Megiddo",ref:"Judg 5:19; Rev 16:16",testament:"Both"},
+  {name:"Dan",rg:"canaan",lat:33.249,lng:35.653,desc:"Northernmost boundary of Israel; idolatrous shrine set up",ref:"Judg 20:1; 1 Kgs 12:29",testament:"OT"},
+  {name:"Beersheba",rg:"canaan",lat:31.252,lng:34.791,desc:"Southernmost boundary; where Abraham made covenants",ref:"Gen 21:31; Gen 46:1",testament:"OT"},
+  {name:"Joppa",rg:"canaan",lat:32.055,lng:34.751,desc:"Port city; Jonah fled here; Peter raised Dorcas here",ref:"Jon 1:3; Acts 9:36",testament:"Both"},
+  {name:"Lydda",rg:"canaan",lat:31.952,lng:34.896,desc:"Peter healed Aeneas here; known today as Lod",ref:"Acts 9:32",testament:"NT"},
+  {name:"Emmaus",rg:"canaan",lat:31.833,lng:35.067,desc:"Where risen Christ walked with two disciples",ref:"Luke 24:13",testament:"NT"},
+  {name:"Caesarea Maritima",rg:"canaan",lat:32.502,lng:34.906,desc:"Roman capital of Judea; Paul imprisoned here",ref:"Acts 10:1; Acts 24:27",testament:"NT"},
+  {name:"Beth-Shean",rg:"canaan",lat:32.498,lng:35.497,desc:"Where Saul's body was fastened to the walls",ref:"1 Sam 31:10",testament:"OT"},
+  {name:"Jezreel",rg:"canaan",lat:32.456,lng:35.333,desc:"Where Naboth's vineyard was; Jezebel died here",ref:"1 Kgs 21:1; 2 Kgs 9:30",testament:"OT"},
+  {name:"Nain",rg:"canaan",lat:32.636,lng:35.358,desc:"Jesus raised a widow's son to life here",ref:"Luke 7:11",testament:"NT"},
+  {name:"Dothan",rg:"canaan",lat:32.418,lng:35.212,desc:"Joseph sold into slavery; Elisha's angelic army",ref:"Gen 37:17; 2 Kgs 6:13",testament:"OT"},
+  {name:"Gibeah",rg:"canaan",lat:31.857,lng:35.247,desc:"Saul's capital; site of the Levite's concubine atrocity",ref:"Judg 19:14; 1 Sam 10:26",testament:"OT"},
+  {name:"Lachish",rg:"canaan",lat:31.561,lng:34.847,desc:"Key Judean fortress; fell to Sennacherib and Nebuchadnezzar",ref:"Josh 10:31; 2 Kgs 18:14",testament:"OT"},
+  {name:"Azekah",rg:"canaan",lat:31.700,lng:34.922,desc:"David and Goliath valley of Elah nearby",ref:"1 Sam 17:1; Jer 34:7",testament:"OT"},
+  {name:"Ashkelon",rg:"canaan",lat:31.669,lng:34.572,desc:"Philistine city on the Mediterranean coast",ref:"Judg 1:18; Amos 1:8",testament:"OT"},
+  {name:"Ashdod",rg:"canaan",lat:31.812,lng:34.649,desc:"Philistine city where Ark of Covenant was taken",ref:"1 Sam 5:1",testament:"OT"},
+  {name:"Gaza",rg:"canaan",lat:31.502,lng:34.468,desc:"Philistine capital; Samson's stronghold and tomb",ref:"Judg 16:1; Acts 8:26",testament:"Both"},
+  {name:"Gath",rg:"canaan",lat:31.688,lng:34.855,desc:"Goliath's hometown; David took refuge here",ref:"1 Sam 17:4; 1 Sam 27:2",testament:"OT"},
+  {name:"Ekron",rg:"canaan",lat:31.773,lng:34.836,desc:"Fifth Philistine city; worshipped Baal-Zebub",ref:"1 Sam 5:10; 2 Kgs 1:2",testament:"OT"},
+  {name:"Tirzah",rg:"canaan",lat:32.274,lng:35.361,desc:"Capital of northern Israel before Samaria",ref:"1 Kgs 14:17; Song 6:4",testament:"OT"},
+  {name:"Arad",rg:"canaan",lat:31.276,lng:35.128,desc:"Canaanite city; later an Israelite stronghold",ref:"Num 21:1",testament:"OT"},
+  {name:"Gezer",rg:"canaan",lat:31.857,lng:34.918,desc:"Border city; given to Solomon as a wedding gift",ref:"1 Kgs 9:15",testament:"OT"},
+  {name:"Ai",rg:"canaan",lat:31.915,lng:35.264,desc:"Second city attacked by Israel; defeat due to Achan's sin",ref:"Josh 7:2",testament:"OT"},
+  {name:"Gibeon",rg:"canaan",lat:31.844,lng:35.174,desc:"Sun stood still here in Joshua's battle",ref:"Josh 10:12",testament:"OT"},
+  {name:"Ramah",rg:"canaan",lat:31.927,lng:35.179,desc:"Samuel's home; Rachel's tomb nearby",ref:"1 Sam 1:19; Jer 31:15",testament:"OT"},
+  {name:"Mizpah",rg:"canaan",lat:31.876,lng:35.207,desc:"Assembly point of Israel; Samuel judged here",ref:"Judg 20:1; 1 Sam 7:5",testament:"OT"},
+  {name:"Endor",rg:"canaan",lat:32.623,lng:35.378,desc:"Where Saul consulted the medium",ref:"1 Sam 28:7",testament:"OT"},
+  {name:"Carmel (Mt.)",rg:"canaan",lat:32.738,lng:35.055,desc:"Elijah's contest with the prophets of Baal",ref:"1 Kgs 18:20",testament:"OT"},
+  {name:"Tabor (Mt.)",rg:"canaan",lat:32.686,lng:35.389,desc:"Deborah's battle; traditionally Transfiguration",ref:"Judg 4:14; Matt 17:1",testament:"Both"},
+  {name:"Gerasenes",rg:"canaan",lat:32.655,lng:35.681,desc:"Legion of demons; Gadarene swine",ref:"Mark 5:1",testament:"NT"},
+  {name:"Sychar",rg:"canaan",lat:32.208,lng:35.281,desc:"Where Jesus spoke to the woman at the well",ref:"John 4:5",testament:"NT"},
+  {name:"Bethany",rg:"canaan",lat:31.770,lng:35.259,desc:"Home of Mary, Martha, and Lazarus; near Jerusalem",ref:"John 11:1; Luke 19:29",testament:"NT"},
+  {name:"Gethsemane",rg:"canaan",lat:31.779,lng:35.238,desc:"Garden where Jesus prayed and was arrested",ref:"Matt 26:36; Mark 14:32",testament:"NT"},
+  {name:"Golgotha",rg:"canaan",lat:31.779,lng:35.229,desc:"Place of the skull; site of the crucifixion",ref:"Matt 27:33; John 19:17",testament:"NT"},
+  {name:"Olivet (Mt.)",rg:"canaan",lat:31.778,lng:35.244,desc:"Jesus' ascension; Zechariah's end-times prophecy",ref:"Zech 14:4; Acts 1:12",testament:"Both"},
+  {name:"Zion (Mt.)",rg:"canaan",lat:31.774,lng:35.229,desc:"Hill of Jerusalem; used poetically for God's city",ref:"Ps 48:2; Rev 14:1",testament:"Both"},
+  {name:"Moriah (Mt.)",rg:"canaan",lat:31.778,lng:35.235,desc:"Abraham offered Isaac; site of Solomon's Temple",ref:"Gen 22:2; 2 Chr 3:1",testament:"OT"},
+  {name:"Ebal (Mt.)",rg:"canaan",lat:32.223,lng:35.282,desc:"Curses proclaimed here; Joshua built an altar",ref:"Deut 11:29; Josh 8:30",testament:"OT"},
+  {name:"Gerizim (Mt.)",rg:"canaan",lat:32.198,lng:35.272,desc:"Blessings proclaimed here; Samaritan holy mountain",ref:"Deut 11:29; John 4:20",testament:"Both"},
+  {name:"Sinai (Mt.)",rg:"other",lat:28.539,lng:33.975,desc:"Mountain of God; the Law given to Moses",ref:"Exod 19:1; Gal 4:25",testament:"Both"},
+  {name:"Horeb (Mt.)",rg:"other",lat:28.539,lng:33.975,desc:"Another name for Sinai; Elijah fled here",ref:"Exod 3:1; 1 Kgs 19:8",testament:"OT"},
+  {name:"Kadesh-Barnea",rg:"other",lat:30.671,lng:34.4,desc:"Israel's base camp during wilderness wanderings",ref:"Num 13:26; Deut 1:19",testament:"OT"},
+  {name:"Paran (Desert)",rg:"other",lat:29.5,lng:34.0,desc:"Wilderness traversed by Israel; Ishmael lived here",ref:"Gen 21:21; Num 10:12",testament:"OT"},
+  {name:"Zin (Desert)",rg:"other",lat:30.5,lng:34.5,desc:"Where Miriam died; Moses struck the rock at Meribah",ref:"Num 20:1",testament:"OT"},
+  {name:"Edom",rg:"other",lat:30.5,lng:35.3,desc:"Land of Esau's descendants; perpetual enemy of Israel",ref:"Gen 32:3; Obad 1:1",testament:"OT"},
+  {name:"Petra (Sela)",rg:"other",lat:30.329,lng:35.441,desc:"Rock city of Edom; the rose-red city",ref:"2 Kgs 14:7; Isa 16:1",testament:"OT"},
+  {name:"Moab",rg:"other",lat:31.2,lng:35.7,desc:"Land of Ruth; Lot's descendant nation east of Dead Sea",ref:"Ruth 1:1; Num 22:1",testament:"OT"},
+  {name:"Dibon",rg:"other",lat:31.499,lng:35.773,desc:"Capital of Moab; Mesha Stele found here",ref:"Num 21:30; Isa 15:2",testament:"OT"},
+  {name:"Ammon / Rabbah",rg:"other",lat:31.955,lng:35.944,desc:"Capital of Ammon (modern Amman); David's siege",ref:"2 Sam 12:26",testament:"OT"},
+  {name:"Mahanaim",rg:"other",lat:32.099,lng:35.729,desc:"Jacob saw angels here; David fled here from Absalom",ref:"Gen 32:2; 2 Sam 17:24",testament:"OT"},
+  {name:"Jabbok River",rg:"other",lat:32.174,lng:35.671,desc:"Where Jacob wrestled the angel all night",ref:"Gen 32:22",testament:"OT"},
+  {name:"Peniel",rg:"other",lat:32.15,lng:35.7,desc:"Jacob wrestled God here; name changed to Israel",ref:"Gen 32:30",testament:"OT"},
+  {name:"Bashan",rg:"other",lat:32.9,lng:36.0,desc:"Land of Og the giant; lush grazing region",ref:"Num 21:33; Ps 22:12",testament:"OT"},
+  {name:"Hermon (Mt.)",rg:"canaan",lat:33.416,lng:35.857,desc:"Snowy peak at Israel's northern boundary",ref:"Deut 3:8; Ps 133:3",testament:"OT"},
+
+  // ── EGYPT ────────────────────────────────────────────────────────────────
+  {name:"Egypt (Mizraim)",rg:"egypt",lat:27.0,lng:30.0,desc:"Land of bondage; Abraham, Joseph, Moses, and the Holy Family",ref:"Gen 12:10; Matt 2:13",testament:"Both"},
+  {name:"Memphis (Noph)",rg:"egypt",lat:29.847,lng:31.251,desc:"Ancient Egyptian capital; Joseph's era",ref:"Isa 19:13; Jer 2:16",testament:"OT"},
+  {name:"Thebes (No-Amon)",rg:"egypt",lat:25.7,lng:32.657,desc:"Great Egyptian capital; pronounced in judgment",ref:"Nah 3:8; Jer 46:25",testament:"OT"},
+  {name:"Rameses (Goshen)",rg:"egypt",lat:30.789,lng:31.820,desc:"Land of Israel's bondage; Exodus departed from here",ref:"Gen 47:11; Exod 12:37",testament:"OT"},
+  {name:"Zoan (Tanis)",rg:"egypt",lat:30.784,lng:31.874,desc:"Egyptian city; Moses' signs performed nearby",ref:"Num 13:22; Ps 78:43",testament:"OT"},
+  {name:"On (Heliopolis)",rg:"egypt",lat:30.129,lng:31.321,desc:"Joseph's father-in-law was priest of On",ref:"Gen 41:45",testament:"OT"},
+  {name:"Nile River",rg:"egypt",lat:26.0,lng:32.5,desc:"Turned to blood; Moses born in its basket",ref:"Exod 7:20; Exod 2:3",testament:"OT"},
+  {name:"Alexandria",rg:"egypt",lat:31.200,lng:29.918,desc:"Major NT-era city; Apollos and Alexandrian Jews",ref:"Acts 18:24; Acts 6:9",testament:"NT"},
+
+  // ── MESOPOTAMIA ──────────────────────────────────────────────────────────
+  {name:"Babylon",rg:"mesopot",lat:32.543,lng:44.420,desc:"Empire that destroyed Jerusalem; Babel; Daniel's home",ref:"Gen 11:9; Dan 1:1; Rev 17:5",testament:"Both"},
+  {name:"Ur of the Chaldees",rg:"mesopot",lat:30.962,lng:46.103,desc:"Abraham's birthplace; beginning of the covenant journey",ref:"Gen 11:28; Acts 7:2",testament:"Both"},
+  {name:"Haran",rg:"mesopot",lat:36.863,lng:39.022,desc:"Abraham and Terah lived here; Jacob fled here",ref:"Gen 11:31; Gen 27:43",testament:"OT"},
+  {name:"Nineveh",rg:"mesopot",lat:36.359,lng:43.155,desc:"Assyrian capital; Jonah preached; Nahum prophesied",ref:"Jon 1:2; Nah 1:1",testament:"OT"},
+  {name:"Assur",rg:"mesopot",lat:35.456,lng:43.263,desc:"Ancient capital of Assyria; eponymous nation",ref:"Gen 10:11; Ezra 4:2",testament:"OT"},
+  {name:"Calah (Nimrud)",rg:"mesopot",lat:36.099,lng:43.329,desc:"Assyrian royal city built by Nimrod",ref:"Gen 10:11",testament:"OT"},
+  {name:"Erech (Uruk)",rg:"mesopot",lat:31.324,lng:45.636,desc:"Ancient Sumerian city listed in Nimrod's domain",ref:"Gen 10:10",testament:"OT"},
+  {name:"Accad",rg:"mesopot",lat:33.1,lng:44.3,desc:"Nimrod's kingdom; center of earliest empires",ref:"Gen 10:10",testament:"OT"},
+  {name:"Mari",rg:"mesopot",lat:34.551,lng:40.893,desc:"City on the Euphrates; archive illuminates patriarchal era",ref:"Ezek 27:16",testament:"OT"},
+  {name:"Carchemish",rg:"mesopot",lat:36.836,lng:38.004,desc:"Battle where Nebuchadnezzar defeated Egypt",ref:"Jer 46:2; 2 Chr 35:20",testament:"OT"},
+  {name:"Euphrates River",rg:"mesopot",lat:34.0,lng:43.0,desc:"One of Eden's four rivers; Israel's ideal eastern border",ref:"Gen 2:14; Rev 16:12",testament:"Both"},
+  {name:"Tigris River",rg:"mesopot",lat:33.0,lng:44.0,desc:"Garden of Eden river; Daniel's vision on its bank",ref:"Gen 2:14; Dan 10:4",testament:"OT"},
+
+  // ── ANATOLIA / ASIA MINOR ────────────────────────────────────────────────
+  {name:"Ephesus",rg:"anatolia",lat:37.939,lng:27.340,desc:"Major NT church; Paul's 3-year ministry; John and Mary",ref:"Acts 19:1; Rev 2:1",testament:"NT"},
+  {name:"Smyrna",rg:"anatolia",lat:38.418,lng:27.128,desc:"One of the seven churches; persecuted but faithful",ref:"Rev 2:8",testament:"NT"},
+  {name:"Pergamum",rg:"anatolia",lat:39.128,lng:27.184,desc:"Where Satan's throne was; one of the seven churches",ref:"Rev 2:12",testament:"NT"},
+  {name:"Thyatira",rg:"anatolia",lat:38.929,lng:27.840,desc:"Home of Lydia; one of the seven churches",ref:"Acts 16:14; Rev 2:18",testament:"NT"},
+  {name:"Sardis",rg:"anatolia",lat:38.489,lng:28.038,desc:"One of the seven churches; had name of being alive",ref:"Rev 3:1",testament:"NT"},
+  {name:"Philadelphia",rg:"anatolia",lat:38.352,lng:28.519,desc:"One of the seven churches; open door set before them",ref:"Rev 3:7",testament:"NT"},
+  {name:"Laodicea",rg:"anatolia",lat:37.834,lng:29.107,desc:"The lukewarm church; one of the seven churches",ref:"Rev 3:14; Col 4:16",testament:"NT"},
+  {name:"Colossae",rg:"anatolia",lat:37.784,lng:29.126,desc:"Paul's letter to the Colossians addressed here",ref:"Col 1:2",testament:"NT"},
+  {name:"Iconium",rg:"anatolia",lat:37.866,lng:32.479,desc:"Paul stoned and left for dead; returned to preach",ref:"Acts 13:51; Acts 14:1",testament:"NT"},
+  {name:"Lystra",rg:"anatolia",lat:37.573,lng:32.343,desc:"Paul stoned; Timothy's hometown",ref:"Acts 14:6; 2 Tim 3:11",testament:"NT"},
+  {name:"Derbe",rg:"anatolia",lat:37.354,lng:33.466,desc:"Paul fled here after stoning at Lystra",ref:"Acts 14:20",testament:"NT"},
+  {name:"Tarsus",rg:"anatolia",lat:36.910,lng:34.895,desc:"Paul's hometown; no mean city",ref:"Acts 9:11; Acts 21:39",testament:"NT"},
+  {name:"Antioch (Pisidia)",rg:"anatolia",lat:38.239,lng:31.215,desc:"Paul's first major synagogue sermon; Jews expelled him",ref:"Acts 13:14",testament:"NT"},
+  {name:"Troas",rg:"anatolia",lat:39.758,lng:26.254,desc:"Paul's Macedonian vision; Eutychus raised from dead",ref:"Acts 16:8; Acts 20:9",testament:"NT"},
+  {name:"Patmos",rg:"anatolia",lat:37.316,lng:26.548,desc:"Island where John received the Revelation",ref:"Rev 1:9",testament:"NT"},
+  {name:"Miletus",rg:"anatolia",lat:37.526,lng:27.275,desc:"Paul's farewell address to Ephesian elders",ref:"Acts 20:17",testament:"NT"},
+  {name:"Halicarnassus",rg:"anatolia",lat:37.037,lng:27.424,desc:"Ancient city in region of Caria",ref:"1 Macc 15:23",testament:"Other"},
+  {name:"Myra",rg:"anatolia",lat:36.267,lng:29.984,desc:"Paul transferred ships here en route to Rome",ref:"Acts 27:5",testament:"NT"},
+  {name:"Cnidus",rg:"anatolia",lat:36.677,lng:27.368,desc:"Paul sailed past en route to Rome",ref:"Acts 27:7",testament:"NT"},
+
+  // ── GREECE & ROME ────────────────────────────────────────────────────────
+  {name:"Athens",rg:"greece",lat:37.983,lng:23.727,desc:"Paul preached on Mars Hill; altar to the unknown god",ref:"Acts 17:15; Acts 17:22",testament:"NT"},
+  {name:"Corinth",rg:"greece",lat:37.906,lng:22.882,desc:"Paul's 18-month ministry; letters to Corinthians",ref:"Acts 18:1; 1 Cor 1:2",testament:"NT"},
+  {name:"Thessalonica",rg:"greece",lat:40.640,lng:22.944,desc:"Paul preached three Sabbaths; church founded",ref:"Acts 17:1; 1 Thess 1:1",testament:"NT"},
+  {name:"Berea",rg:"greece",lat:40.520,lng:22.203,desc:"The noble Bereans who searched the Scriptures daily",ref:"Acts 17:10",testament:"NT"},
+  {name:"Philippi",rg:"greece",lat:41.013,lng:24.287,desc:"Europe's first church; Lydia converted; Paul imprisoned",ref:"Acts 16:12; Phil 1:1",testament:"NT"},
+  {name:"Neapolis",rg:"greece",lat:40.852,lng:24.412,desc:"Paul's first European landfall",ref:"Acts 16:11",testament:"NT"},
+  {name:"Rome",rg:"greece",lat:41.902,lng:12.496,desc:"Heart of the empire; Paul's imprisonment; Peter martyred",ref:"Acts 28:14; Rom 1:7",testament:"NT"},
+  {name:"Malta",rg:"greece",lat:35.937,lng:14.375,desc:"Paul shipwrecked here; bit by viper and unharmed",ref:"Acts 28:1",testament:"NT"},
+  {name:"Syracuse",rg:"greece",lat:37.075,lng:15.287,desc:"Paul stayed three days en route to Rome",ref:"Acts 28:12",testament:"NT"},
+  {name:"Rhegium",rg:"greece",lat:38.110,lng:15.643,desc:"Paul passed by en route to Rome",ref:"Acts 28:13",testament:"NT"},
+  {name:"Puteoli",rg:"greece",lat:40.826,lng:14.126,desc:"Paul landed here; brethren came to meet him",ref:"Acts 28:13",testament:"NT"},
+  {name:"Three Taverns",rg:"greece",lat:41.5,lng:13.0,desc:"Roman Christians walked to meet Paul here",ref:"Acts 28:15",testament:"NT"},
+  {name:"Appii Forum",rg:"greece",lat:41.45,lng:12.98,desc:"Roman Christians walked to meet Paul here",ref:"Acts 28:15",testament:"NT"},
+  {name:"Macedonia",rg:"greece",lat:41.5,lng:22.0,desc:"Region Paul evangelized; Philippians and Thessalonians",ref:"Acts 16:9; Rom 15:26",testament:"NT"},
+  {name:"Achaia",rg:"greece",lat:38.0,lng:22.5,desc:"Roman province of Greece; Gallio was proconsul",ref:"Acts 18:12; 2 Cor 1:1",testament:"NT"},
+  {name:"Crete",rg:"greece",lat:35.240,lng:24.808,desc:"Titus left here to set church in order; Paul warned",ref:"Acts 27:7; Titus 1:5",testament:"NT"},
+  {name:"Cyprus",rg:"greece",lat:35.126,lng:33.430,desc:"Barnabas' homeland; Paul's first missionary journey",ref:"Acts 4:36; Acts 13:4",testament:"NT"},
+  {name:"Salamis (Cyprus)",rg:"greece",lat:35.183,lng:33.901,desc:"First stop on Paul's first missionary journey",ref:"Acts 13:5",testament:"NT"},
+  {name:"Paphos (Cyprus)",rg:"greece",lat:34.757,lng:32.407,desc:"Elymas the sorcerer blinded; Sergius Paulus converted",ref:"Acts 13:6",testament:"NT"},
+
+  // ── SYRIA & PHOENICIA ────────────────────────────────────────────────────
+  {name:"Antioch (Syria)",rg:"canaan",lat:36.202,lng:36.160,desc:"First called Christians; Barnabas and Paul sent out",ref:"Acts 11:26; Acts 13:1",testament:"NT"},
+  {name:"Damascus",rg:"canaan",lat:33.511,lng:36.291,desc:"Paul's conversion on the road; Ananias healed him",ref:"Acts 9:1; Gen 14:15",testament:"Both"},
+  {name:"Tyre",rg:"canaan",lat:33.272,lng:35.194,desc:"Phoenician trade city; Hiram helped build the Temple",ref:"2 Sam 5:11; Acts 21:3",testament:"Both"},
+  {name:"Sidon",rg:"canaan",lat:33.563,lng:35.374,desc:"Phoenician city; Jesus healed woman's daughter nearby",ref:"Matt 15:21; Luke 4:26",testament:"Both"},
+  {name:"Zarephath",rg:"canaan",lat:33.454,lng:35.295,desc:"Elijah and widow's son raised; Sidonian widow",ref:"1 Kgs 17:9; Luke 4:26",testament:"Both"},
+  {name:"Baalbek (Heliopolis)",rg:"canaan",lat:34.004,lng:36.215,desc:"Ancient Phoenician temple city in Lebanon",ref:"Ezek 27:6",testament:"OT"},
+  {name:"Hamath",rg:"canaan",lat:35.138,lng:36.757,desc:"Syrian city; northern ideal boundary of Israel",ref:"Num 34:8; Amos 6:2",testament:"OT"},
+  {name:"Kadesh-on-Orontes",rg:"canaan",lat:34.552,lng:36.527,desc:"Major northern Syrian city; site of battles",ref:"Num 34:8",testament:"OT"},
+
+  // ── ARABIA & SINAI PENINSULA ─────────────────────────────────────────────
+  {name:"Midian",rg:"arabia",lat:28.5,lng:36.0,desc:"Moses fled here; married Zipporah; burning bush",ref:"Exod 2:15; Exod 3:1",testament:"OT"},
+  {name:"Sheba",rg:"arabia",lat:15.0,lng:44.0,desc:"Queen who visited Solomon; land of frankincense",ref:"1 Kgs 10:1; Matt 12:42",testament:"Both"},
+  {name:"Dedan",rg:"arabia",lat:26.5,lng:38.0,desc:"Trading hub in northwestern Arabia",ref:"Jer 25:23; Ezek 38:13",testament:"OT"},
+  {name:"Arabia",rg:"arabia",lat:24.0,lng:45.0,desc:"Paul went here after conversion; Galatians reference",ref:"Gal 1:17; 1 Kgs 10:15",testament:"Both"},
+  {name:"Elath (Elath)",rg:"arabia",lat:29.556,lng:34.951,desc:"Port on Red Sea; Solomon's navy based here",ref:"1 Kgs 9:26",testament:"OT"},
+  {name:"Red Sea",rg:"other",lat:20.0,lng:38.0,desc:"Israel crossed on dry ground; Pharaoh's army drowned",ref:"Exod 14:21; Heb 11:29",testament:"Both"},
+
+  // ── PERSIA ───────────────────────────────────────────────────────────────
+  {name:"Susa (Shushan)",rg:"persia",lat:32.187,lng:48.247,desc:"Persian capital; Esther and Mordecai; Daniel's vision",ref:"Esth 1:2; Dan 8:2; Neh 1:1",testament:"OT"},
+  {name:"Ecbatana (Achmetha)",rg:"persia",lat:34.799,lng:48.515,desc:"Median/Persian royal capital; Darius' decree found here",ref:"Ezra 6:2",testament:"OT"},
+  {name:"Persepolis",rg:"persia",lat:29.936,lng:52.891,desc:"Great ceremonial capital of the Persian Empire",ref:"Esth 1:1",testament:"OT"},
+  {name:"Media",rg:"persia",lat:35.0,lng:50.0,desc:"Kingdom of the Medes; conquered Assyria with Babylon",ref:"Dan 5:28; Esth 1:3",testament:"OT"},
+  {name:"Elam",rg:"persia",lat:31.0,lng:48.0,desc:"Ancient kingdom east of Babylon; Jews exiled here",ref:"Gen 10:22; Acts 2:9",testament:"Both"},
+  {name:"Persia",rg:"persia",lat:32.0,lng:53.0,desc:"Empire of Cyrus, Darius, Ahasuerus; allowed return of Jews",ref:"2 Chr 36:22; Dan 10:1",testament:"OT"},
+
+  // ── OTHER OT PLACES ───────────────────────────────────────────────────────
+  {name:"Ararat (Mt.)",rg:"other",lat:39.703,lng:44.296,desc:"Where Noah's ark came to rest after the flood",ref:"Gen 8:4",testament:"OT"},
+  {name:"Garden of Eden",rg:"other",lat:33.0,lng:44.0,desc:"First home of humanity; four rivers flowed from it",ref:"Gen 2:8",testament:"OT"},
+  {name:"Ethiopia (Cush)",rg:"other",lat:10.0,lng:38.0,desc:"Land of Cush; Moses' Ethiopian wife; Candace's eunuch",ref:"Num 12:1; Acts 8:27",testament:"Both"},
+  {name:"Put (Libya)",rg:"other",lat:27.0,lng:17.0,desc:"Son of Ham; African land mentioned in prophecy",ref:"Gen 10:6; Ezek 38:5",testament:"OT"},
+  {name:"Land of Nod",rg:"other",lat:33.5,lng:46.0,desc:"Where Cain went east of Eden",ref:"Gen 4:16",testament:"OT"},
+  {name:"Ophir",rg:"other",lat:20.0,lng:57.0,desc:"Source of Solomon's gold; possibly Arabia or East Africa",ref:"1 Kgs 9:28; Job 22:24",testament:"OT"},
+  {name:"Tarshish",rg:"other",lat:36.8,lng:-5.6,desc:"Distant seafaring nation; Jonah fled here; Spain?",ref:"Jon 1:3; 1 Kgs 10:22",testament:"OT"},
+  {name:"Gog / Magog",rg:"other",lat:40.0,lng:50.0,desc:"Eschatological nations; north country coalition",ref:"Gen 10:2; Rev 20:8; Ezek 38:2",testament:"Both"},
+  {name:"Pontus",rg:"anatolia",lat:41.0,lng:37.0,desc:"Region on Black Sea; Aquila came from here",ref:"Acts 2:9; Acts 18:2",testament:"NT"},
+  {name:"Cappadocia",rg:"anatolia",lat:38.7,lng:35.5,desc:"Roman province; diaspora Jews on Pentecost",ref:"Acts 2:9; 1 Pet 1:1",testament:"NT"},
+  {name:"Phrygia",rg:"anatolia",lat:38.5,lng:30.5,desc:"Region where Galatians were; Pentecost crowd",ref:"Acts 2:10; Acts 16:6",testament:"NT"},
+  {name:"Galatia",rg:"anatolia",lat:39.0,lng:33.0,desc:"Central Anatolian region; Paul's letter to Galatians",ref:"Gal 1:2; Acts 16:6",testament:"NT"},
+  {name:"Bithynia",rg:"anatolia",lat:40.5,lng:30.5,desc:"Spirit forbade Paul to enter; Peter addressed churches",ref:"Acts 16:7; 1 Pet 1:1",testament:"NT"},
+  {name:"Mysia",rg:"anatolia",lat:40.0,lng:28.5,desc:"Paul passed through on his way to Troas",ref:"Acts 16:7",testament:"NT"},
+  {name:"Pamphylia",rg:"anatolia",lat:37.0,lng:31.5,desc:"Coastal Anatolian region; John Mark left Paul here",ref:"Acts 13:13; Acts 2:10",testament:"NT"},
+  {name:"Cilicia",rg:"anatolia",lat:37.0,lng:35.5,desc:"Paul's home region; Tarsus is its chief city",ref:"Acts 6:9; Gal 1:21",testament:"NT"},
+  {name:"Lycia",rg:"anatolia",lat:36.5,lng:29.5,desc:"Coastal region; Paul changed ships here",ref:"Acts 27:5",testament:"NT"},
+  {name:"Assos",rg:"anatolia",lat:39.489,lng:26.334,desc:"Paul walked here while ship went ahead",ref:"Acts 20:13",testament:"NT"},
+  {name:"Chios",rg:"greece",lat:38.367,lng:26.136,desc:"Paul's ship sailed past this Greek island",ref:"Acts 20:15",testament:"NT"},
+  {name:"Samos",rg:"greece",lat:37.80,lng:26.97,desc:"Paul's ship tarried here",ref:"Acts 20:15",testament:"NT"},
+  {name:"Rhodes",rg:"greece",lat:36.434,lng:28.218,desc:"Paul stopped here on third journey",ref:"Acts 21:1",testament:"NT"},
+  {name:"Cos",rg:"greece",lat:36.893,lng:27.288,desc:"Paul stopped here on third journey",ref:"Acts 21:1",testament:"NT"},
+  {name:"Patara",rg:"anatolia",lat:36.267,lng:29.317,desc:"Paul found ship here bound for Phoenicia",ref:"Acts 21:1",testament:"NT"},
+  {name:"Tyre",rg:"canaan",lat:33.272,lng:35.194,desc:"Paul stayed seven days with disciples",ref:"Acts 21:3",testament:"NT"},
+  {name:"Ptolemais",rg:"canaan",lat:32.926,lng:35.066,desc:"Paul greeted brethren here (ancient Acco)",ref:"Acts 21:7",testament:"NT"},
+  {name:"Fair Havens (Crete)",rg:"greece",lat:34.913,lng:24.78,desc:"Paul urged to winter here; ignored; shipwrecked",ref:"Acts 27:8",testament:"NT"},
+  {name:"Clauda",rg:"greece",lat:35.23,lng:23.93,desc:"Small island where ship barely held together",ref:"Acts 27:16",testament:"NT"},
+
+  // NT Places - Jesus ministry
+  {name:"Decapolis",rg:"canaan",lat:32.5,lng:36.0,desc:"League of ten Gentile cities east of Galilee",ref:"Matt 4:25; Mark 7:31",testament:"NT"},
+  {name:"Perea",rg:"canaan",lat:31.7,lng:35.7,desc:"Region east of Jordan; part of Jesus' ministry",ref:"Matt 19:1; Luke 13:31",testament:"NT"},
+  {name:"Aenon",rg:"canaan",lat:32.39,lng:35.49,desc:"Near Salim; where John baptized many",ref:"John 3:23",testament:"NT"},
+  {name:"Emmaus",rg:"canaan",lat:31.833,lng:35.067,desc:"Road where risen Jesus walked with disciples",ref:"Luke 24:13",testament:"NT"},
+
+  // Wilderness
+  {name:"Wilderness of Judea",rg:"canaan",lat:31.7,lng:35.4,desc:"Where Jesus was tempted 40 days; John the Baptist",ref:"Matt 3:1; Matt 4:1",testament:"NT"},
+
+  // OT places in broader context
+  {name:"Goshen",rg:"egypt",lat:30.6,lng:31.9,desc:"Land given to Jacob's family in Egypt",ref:"Gen 45:10; Exod 9:26",testament:"OT"},
+  {name:"Succoth (Egypt)",rg:"egypt",lat:30.62,lng:32.05,desc:"First Exodus campsite out of Egypt",ref:"Exod 12:37",testament:"OT"},
+  {name:"Etham",rg:"other",lat:30.5,lng:32.3,desc:"Second Exodus campsite; edge of wilderness",ref:"Exod 13:20",testament:"OT"},
+  {name:"Pi-Hahiroth",rg:"egypt",lat:30.5,lng:32.5,desc:"Where Israel camped before the Red Sea crossing",ref:"Exod 14:2",testament:"OT"},
+  {name:"Marah",rg:"other",lat:29.5,lng:33.0,desc:"Bitter waters made sweet; first healing in the desert",ref:"Exod 15:23",testament:"OT"},
+  {name:"Elim",rg:"other",lat:29.1,lng:33.1,desc:"Twelve springs and seventy palms; Israel camped here",ref:"Exod 15:27",testament:"OT"},
+  {name:"Rephidim",rg:"other",lat:28.7,lng:34.0,desc:"Battle with Amalek; Moses' arms held up",ref:"Exod 17:1; Exod 17:8",testament:"OT"},
+  {name:"Valley of Hinnom",rg:"canaan",lat:31.770,lng:35.225,desc:"Jerusalem's garbage dump; child sacrifices; Gehenna",ref:"2 Chr 28:3; Mark 9:43",testament:"Both"},
+  {name:"Pool of Siloam",rg:"canaan",lat:31.772,lng:35.234,desc:"Where Jesus sent the blind man to wash",ref:"John 9:7",testament:"NT"},
+  {name:"Bethzatha (Bethesda)",rg:"canaan",lat:31.782,lng:35.234,desc:"Pool where Jesus healed the paralyzed man",ref:"John 5:2",testament:"NT"},
+  {name:"Praetorium",rg:"canaan",lat:31.778,lng:35.229,desc:"Where Pilate judged Jesus",ref:"Matt 27:27; John 18:28",testament:"NT"},
+  {name:"Upper Room",rg:"canaan",lat:31.772,lng:35.228,desc:"Last Supper and Pentecost took place here",ref:"Luke 22:12; Acts 1:13",testament:"NT"},
+  {name:"Aceldama",rg:"canaan",lat:31.770,lng:35.227,desc:"Field of Blood; bought with Judas' thirty pieces",ref:"Matt 27:8; Acts 1:19",testament:"NT"},
+  {name:"Kedron Valley",rg:"canaan",lat:31.779,lng:35.242,desc:"Jesus crossed here going to Gethsemane",ref:"John 18:1; 1 Kgs 2:37",testament:"Both"},
+  {name:"Siloam (Tower)",rg:"canaan",lat:31.770,lng:35.232,desc:"Tower that fell on 18 people; Jesus' illustration",ref:"Luke 13:4",testament:"NT"},
+];
+const RG_COLORS = {
+  canaan:"#c9a227", egypt:"#e07b39", mesopot:"#7c5cbf",
+  anatolia:"#3b82f6", greece:"#22c55e", arabia:"#ef4444",
+  persia:"#06b6d4", other:"#94a3b8"
+};
+
+const RG_NAMES = {
+  canaan:"Canaan & Israel", egypt:"Egypt", mesopot:"Mesopotamia",
+  anatolia:"Anatolia", greece:"Greece & Rome", arabia:"Arabia",
+  persia:"Persia", other:"Other Regions"
+};
+
+const RG_ORDER = ["canaan","egypt","mesopot","anatolia","greece","arabia","persia","other"];
+
+// ── ACCORDION ────────────────────────────────────────────────────────────────
+function toggleAcc(btn) {
+  btn.classList.toggle('open');
+  const body = btn.nextElementSibling;
+  body.classList.toggle('closed');
+  if (!body.classList.contains('closed')) {
+    // restore natural height
+    body.style.maxHeight = body.scrollHeight + 'px';
+  } else {
+    body.style.maxHeight = '0';
+  }
+}
+
+function togglePlaces(btn) {
+  btn.classList.toggle('open');
+  const scroll = btn.nextElementSibling;
+  if (btn.classList.contains('open')) {
+    scroll.style.display = '';
+  } else {
+    scroll.style.display = 'none';
+  }
+}
+
+// ── MAP INIT ─────────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center:[31.5,35.0], zoom:7, zoomControl:true, minZoom:2, maxZoom:19
+});
+
+const LAYERS = {
+  osm: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
+  }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
+    attribution:'© OpenTopoMap (CC-BY-SA)', maxZoom:17
+  }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    attribution:'© Esri', maxZoom:19
+  }),
+  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© CARTO', maxZoom:19, subdomains:'abcd'
+  }),
+};
+
+// Ancient map overlays — multiple options, all free and reliable
+let ancientOverlay = null;
+let ancientVisible = false;
+let ancientMode = 'historical'; // which overlay is active
+
+const ANCIENT_LAYERS = {
+  // ESRI World Shaded Relief — closest to an "ancient" looking basemap
+  // Shows terrain without modern political labels
+  historical: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: '© Esri',
+      opacity: 0.6,
+      maxZoom: 13,
+    }
+  ),
+  // ESRI World Terrain Base — topographic, ancient-feeling
+  terrain: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: '© Esri',
+      opacity: 0.55,
+      maxZoom: 13,
+    }
+  ),
+  // ESRI World Physical — physical geography only, no labels
+  physical: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: '© Esri',
+      opacity: 0.6,
+      maxZoom: 8,
+    }
+  ),
+};
+
+function toggleAncientMap(btn) {
+  ancientVisible = !ancientVisible;
+  btn.classList.toggle('active', ancientVisible);
+  if (ancientVisible) {
+    ancientOverlay = ANCIENT_LAYERS[ancientMode];
+    ancientOverlay.addTo(map);
+    ancientOverlay.bringToBack();
+    document.getElementById('ancientNote').style.display = 'block';
+  } else {
+    if (ancientOverlay) { map.removeLayer(ancientOverlay); ancientOverlay = null; }
+    document.getElementById('ancientNote').style.display = 'none';
+  }
+}
+
+function setAncientMode(mode, btn) {
+  document.querySelectorAll('.ancient-mode-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ancientMode = mode;
+  if (ancientVisible && ancientOverlay) {
+    map.removeLayer(ancientOverlay);
+    ancientOverlay = ANCIENT_LAYERS[mode];
+    ancientOverlay.addTo(map);
+    ancientOverlay.bringToBack();
+  }
+}
+LAYERS.osm.addTo(map);
+let activeLayer = 'osm';
+
+function setLayer(name, btn) {
+  map.removeLayer(LAYERS[activeLayer]);
+  LAYERS[name].addTo(map);
+  activeLayer = name;
+  document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function resetView() { map.flyTo([31.5,35.0],7,{duration:1.2}); }
+
+// ── MARKERS ──────────────────────────────────────────────────────────────────
+const markers = {};
+let activeFilter = 'all';
+let selectedPlace = null;
+
+function makeIcon(color, selected) {
+  const s = selected ? 10 : 7, b = selected ? 2.5 : 1.5, t = s*2+b*2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${t}" height="${t}" viewBox="0 0 ${t} ${t}">
+    ${selected?`<circle cx="${s+b}" cy="${s+b}" r="${s+b-0.5}" fill="${color}" opacity="0.25"/>`:''}
+    <circle cx="${s+b}" cy="${s+b}" r="${s}" fill="${color}" stroke="white" stroke-width="${b}"/>
+  </svg>`;
+  return L.divIcon({html:svg,className:'',iconSize:[t,t],iconAnchor:[t/2,t/2],popupAnchor:[0,-t/2-2]});
+}
+
+function buildPopup(p, idx) {
+  return `<div class="popup-name">${p.name}</div>
+  <div class="popup-region">${RG_NAMES[p.rg]} · ${p.testament}</div>
+  <div class="popup-desc">${p.desc}</div>
+  <div class="popup-ref">${p.ref}</div>
+  <button class="popup-dir-btn" onclick="addStopFromPopup('${p.name.replace(/'/g,"\\'")}',${idx})">+ Add to Directions</button>`;
+}
+
+function addMarkers() {
+  PLACES.forEach((p,i) => {
+    const col = RG_COLORS[p.rg]||'#94a3b8';
+    const m = L.marker([p.lat,p.lng],{icon:makeIcon(col,false)})
+      .bindPopup(buildPopup(p,i),{maxWidth:240})
+      .on('click',()=>selectPlace(i,false));
+    m.addTo(map);
+    markers[i] = m;
+  });
+}
+
+function selectPlace(idx, flyto=true) {
+  const p = PLACES[idx];
+  if (!p) return;
+  if (selectedPlace!==null && markers[selectedPlace]) {
+    markers[selectedPlace].setIcon(makeIcon(RG_COLORS[PLACES[selectedPlace].rg]||'#94a3b8',false));
+  }
+  selectedPlace = idx;
+  markers[idx].setIcon(makeIcon(RG_COLORS[p.rg]||'#94a3b8',true));
+  if (flyto) {
+    map.flyTo([p.lat,p.lng],Math.max(map.getZoom(),10),{duration:1.0});
+    setTimeout(()=>markers[idx].openPopup(),1000);
+  } else {
+    markers[idx].openPopup();
+  }
+  renderList();
+  setTimeout(()=>{
+    const el=document.querySelector(`.place-item[data-idx="${idx}"]`);
+    if(el)el.scrollIntoView({block:'nearest',behavior:'smooth'});
+  },100);
+}
+
+function applyFilter(rg) {
+  activeFilter = rg;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.rg===rg));
+  PLACES.forEach((p,i)=>{
+    const show=rg==='all'||p.rg===rg;
+    if(show){if(!map.hasLayer(markers[i]))markers[i].addTo(map);}
+    else{if(map.hasLayer(markers[i]))map.removeLayer(markers[i]);}
+  });
+  updateStats(); renderList();
+}
+document.querySelectorAll('.filter-btn').forEach(btn=>btn.addEventListener('click',()=>applyFilter(btn.dataset.rg)));
+
+// ── PLACE LIST (accordion groups) ────────────────────────────────────────────
+function renderList() {
+  const el = document.getElementById('placeList');
+  el.innerHTML = '';
+  const groups = activeFilter==='all' ? RG_ORDER : [activeFilter];
+  for (const rg of groups) {
+    const list = PLACES.map((p,i)=>({p,i})).filter(({p})=>p.rg===rg);
+    if (!list.length) continue;
+    const col = RG_COLORS[rg];
+    const grp = document.createElement('div');
+    grp.className = 'rg-group';
+    const tog = document.createElement('button');
+    tog.className = 'rg-toggle open';
+    tog.innerHTML = `<span class="rg-dot" style="background:${col}"></span>${RG_NAMES[rg]}<span class="rg-count">(${list.length})</span><span class="rg-arrow">▼</span>`;
+    tog.onclick = function(){
+      this.classList.toggle('open');
+      const items=this.nextElementSibling;
+      if(this.classList.contains('open')){
+        items.classList.remove('closed');
+        items.style.maxHeight=items.scrollHeight+'px';
+      } else {
+        items.classList.add('closed');
+        items.style.maxHeight='0';
+      }
+    };
+    const items = document.createElement('div');
+    items.className = 'rg-items';
+    items.style.maxHeight = '9999px'; // open by default
+    for (const {p,i} of list) {
+      const item = document.createElement('div');
+      item.className = 'place-item'+(selectedPlace===i?' active':'');
+      item.dataset.idx = i;
+      item.style.borderLeftColor = col;
+      item.innerHTML=`<div class="p-dot" style="background:${col}"></div><span class="p-name">${p.name}</span><span class="p-tag">${p.testament}</span>`;
+      item.addEventListener('click',()=>selectPlace(i));
+      items.appendChild(item);
+    }
+    grp.appendChild(tog); grp.appendChild(items);
+    el.appendChild(grp);
+  }
+}
+
+function updateStats() {
+  const list = activeFilter==='all'?PLACES:PLACES.filter(p=>p.rg===activeFilter);
+  document.getElementById('s-places').textContent=list.length;
+  document.getElementById('s-ot').textContent=list.filter(p=>p.testament==='OT'||p.testament==='Both').length;
+  document.getElementById('s-nt').textContent=list.filter(p=>p.testament==='NT'||p.testament==='Both').length;
+  RG_ORDER.forEach(rg=>{ document.getElementById('cnt-'+rg).textContent=PLACES.filter(p=>p.rg===rg).length; });
+  document.getElementById('cnt-all').textContent=PLACES.length;
+}
+
+// ── SEARCH ───────────────────────────────────────────────────────────────────
+function doSearch(val) {
+  const res=document.getElementById('searchResults');
+  if(!val.trim()){res.innerHTML='';return;}
+  const q=val.toLowerCase();
+  const hits=PLACES.map((p,i)=>({p,i})).filter(({p})=>p.name.toLowerCase().includes(q)).slice(0,7);
+  if(!hits.length){res.innerHTML='<div style="font-size:0.62rem;color:var(--muted);padding:2px 0">No results</div>';return;}
+  res.innerHTML=hits.map(({p,i})=>`<div class="sr-item" onclick="pickSearch(${i})">
+    <span class="sr-dot" style="background:${RG_COLORS[p.rg]}"></span>
+    <span class="sr-name">${p.name}</span><span class="sr-tag">${p.testament}</span>
+  </div>`).join('');
+}
+function pickSearch(idx){
+  document.getElementById('searchInput').value=PLACES[idx].name;
+  document.getElementById('searchResults').innerHTML='';
+  selectPlace(idx);
+}
+function commitSearch(){
+  const val=document.getElementById('searchInput').value.trim();
+  if(!val)return;
+  const q=val.toLowerCase();
+  const m=PLACES.map((p,i)=>({p,i})).find(({p})=>p.name.toLowerCase()===q)
+    ||PLACES.map((p,i)=>({p,i})).find(({p})=>p.name.toLowerCase().startsWith(q))
+    ||PLACES.map((p,i)=>({p,i})).find(({p})=>p.name.toLowerCase().includes(q));
+  if(m)pickSearch(m.i);
+}
+
+// ── DIRECTIONS ───────────────────────────────────────────────────────────────
+let dirStops = [];        // array of {name, lat, lng}
+let routeLayer = null;
+let routeMarkers = [];
+
+function initDirections() {
+  dirStops = [];
+  addStop(); addStop(); // start with 2 stops
+}
+
+function addStop(name='', lat=null, lng=null) {
+  const idx = dirStops.length;
+  dirStops.push({name, lat, lng});
+  renderDirStops();
+}
+
+function removeStop(idx) {
+  dirStops.splice(idx,1);
+  renderDirStops();
+}
+
+function renderDirStops() {
+  const el = document.getElementById('dirStops');
+  el.innerHTML = '';
+  dirStops.forEach((stop,idx)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'dir-stop';
+    wrap.style.position='relative';
+
+    const num = document.createElement('div');
+    num.className = 'dir-stop-num';
+    num.textContent = idx===0?'A':idx===dirStops.length-1?'B':idx+1;
+    if(idx>0&&idx<dirStops.length-1) num.style.background='#64748b';
+
+    const inp = document.createElement('input');
+    inp.type='text'; inp.placeholder=idx===0?'From…':idx===dirStops.length-1?'To…':'Via…';
+    inp.value=stop.name;
+
+    const ac = document.createElement('div');
+    ac.className='dir-autocomplete';
+
+    inp.addEventListener('input', function(){
+      stop.name=this.value; stop.lat=null; stop.lng=null;
+      const q=this.value.toLowerCase();
+      if(!q){ac.style.display='none';return;}
+      const hits=PLACES.filter(p=>p.name.toLowerCase().includes(q)).slice(0,6);
+      if(!hits.length){ac.style.display='none';return;}
+      ac.innerHTML=hits.map(p=>`<div class="dir-ac-item" data-name="${p.name}" data-lat="${p.lat}" data-lng="${p.lng}">
+        <span class="sr-dot" style="background:${RG_COLORS[p.rg]}"></span>${p.name}
+      </div>`).join('');
+      ac.style.display='block';
+      ac.querySelectorAll('.dir-ac-item').forEach(item=>{
+        item.addEventListener('mousedown',function(e){
+          e.preventDefault();
+          stop.name=this.dataset.name; stop.lat=+this.dataset.lat; stop.lng=+this.dataset.lng;
+          inp.value=stop.name; ac.style.display='none';
+        });
+      });
+    });
+    inp.addEventListener('blur',()=>setTimeout(()=>{ac.style.display='none';},150));
+
+    const del = document.createElement('button');
+    del.className='dir-del'; del.textContent='✕';
+    del.onclick=()=>removeStop(idx);
+    if(dirStops.length<=2) del.style.display='none';
+
+    wrap.appendChild(num); wrap.appendChild(inp); wrap.appendChild(del); wrap.appendChild(ac);
+    el.appendChild(wrap);
+  });
+}
+
+function addStopFromPopup(name, placeIdx) {
+  // Open directions accordion first
+  const dirBtn = document.querySelector('.acc-toggle + .acc-body.closed');
+  // Open directions panel
+  const accToggles = document.querySelectorAll('.acc-toggle');
+  accToggles.forEach(t=>{
+    if(t.textContent.includes('Directions')&&!t.classList.contains('open')){
+      toggleAcc(t);
+    }
+  });
+  const p = PLACES[placeIdx];
+  // Find an empty stop or add one
+  const emptyIdx = dirStops.findIndex(s=>!s.name);
+  if(emptyIdx>=0){
+    dirStops[emptyIdx]={name:p.name,lat:p.lat,lng:p.lng};
+  } else {
+    dirStops.push({name:p.name,lat:p.lat,lng:p.lng});
+  }
+  renderDirStops();
+}
+
+function resolveStops() {
+  // Re-read input values from DOM so we catch anything typed without selecting autocomplete
+  const inputs = document.querySelectorAll('#dirStops .dir-stop input');
+  inputs.forEach((inp, i) => {
+    if (dirStops[i]) dirStops[i].name = inp.value.trim();
+  });
+  // Now resolve any stop that is missing coordinates
+  dirStops.forEach(stop => {
+    if (!stop.name) return;
+    // Always re-resolve — don't trust stale lat/lng from closure
+    const q = stop.name.toLowerCase();
+    const match = PLACES.find(p=>p.name.toLowerCase()===q)
+      || PLACES.find(p=>p.name.toLowerCase().startsWith(q))
+      || PLACES.find(p=>p.name.toLowerCase().includes(q));
+    if (match) { stop.lat=match.lat; stop.lng=match.lng; stop.name=match.name; }
+  });
+}
+
+function makePinIcon(label, col) {
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="30" viewBox="0 0 24 30">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18C24 5.37 18.63 0 12 0z" fill="${col}"/>
+    <text x="12" y="16" text-anchor="middle" font-size="10" font-weight="bold" fill="white" font-family="sans-serif">${label}</text>
+  </svg>`;
+  return L.divIcon({html:svg,className:'',iconSize:[24,30],iconAnchor:[12,30],popupAnchor:[0,-30]});
+}
+
+// ── ROUTING ──────────────────────────────────────────────────────────────────
+// OpenRouteService Directions API — free, no credit card, email signup only
+// Get your free key at openrouteservice.org (2,000 requests/day free)
+// Supports avoid_borders=none — crosses King Hussein Bridge & all border crossings
+const ORS_TOKEN = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImExMmY0MmNhOTMxNzQwMTU5YjIwNDg1Nzk4MDM1MTRjIiwiaCI6Im11cm11cjY0In0=';
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function fmtWalkTime(distKm){
+  const walkHrs=distKm/5;
+  let hrs=Math.floor(walkHrs),mins=Math.round((walkHrs-hrs)*60);
+  if(mins===60){hrs++;mins=0;}
+  return hrs>0&&mins>0?`${hrs}h ${mins}m`:hrs>0?`${hrs}h`:`${mins} min`;
+}
+
+async function runDirections() {
+  clearRoute();
+  resolveStops();
+  const valid = dirStops.filter(s=>s.lat&&s.lng);
+  if(valid.length<2){
+    const el=document.getElementById('dirTotal');
+    el.textContent='Enter at least 2 valid biblical places.';
+    el.style.display='block';
+    return;
+  }
+
+  const totalEl=document.getElementById('dirTotal');
+  totalEl.textContent='⏳ Finding route…';
+  totalEl.style.display='block';
+
+  // Pin markers
+  valid.forEach((stop,i)=>{
+    const label=i===0?'A':i===valid.length-1?'B':`${i+1}`;
+    const col=i===0?'#22c55e':i===valid.length-1?'#ef4444':'#c9a227';
+    const m=L.marker([stop.lat,stop.lng],{icon:makePinIcon(label,col)})
+      .bindPopup(`<b>${stop.name}</b>`).addTo(map);
+    routeMarkers.push(m);
+  });
+
+  // Token check
+  if(!ORS_TOKEN||ORS_TOKEN==='YOUR_ORS_API_KEY_HERE'){
+    totalEl.innerHTML=`<span style="color:#f59e0b">⚠ Add your OpenRouteService API key to enable routing.<br>
+      Free signup (email only, no credit card) at
+      <a href="https://openrouteservice.org/dev/#/signup" target="_blank"
+         style="color:#c9a227">openrouteservice.org</a> →
+      Dashboard → API Keys → Copy key →
+      open this file and replace YOUR_ORS_API_KEY_HERE</span>`;
+    totalEl.style.display='block';
+    return;
+  }
+
+  try {
+    // ORS accepts max 50 waypoints as [lng, lat] pairs
+    // avoid_borders=none crosses every political border
+    // profile: foot-walking
+    const coordinates = valid.map(s=>[s.lng, s.lat]);
+
+    const body = {
+      coordinates,
+      instructions: false,
+      options: {
+        avoid_borders: 'none'   // ← crosses King Hussein Bridge, every border
+      }
+    };
+
+    const res = await fetch(
+      'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': ORS_TOKEN
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      throw new Error(err.error?.message||`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const feature = data.features?.[0];
+    if(!feature) throw new Error('No route returned');
+
+    const props = feature.properties.summary;
+    const distKm = (props.distance/1000).toFixed(1);
+    const timeStr = fmtWalkTime(props.distance/1000);
+
+    // Draw route
+    const latlngs = feature.geometry.coordinates.map(([lng,lat])=>[lat,lng]);
+    routeLayer = L.polyline(latlngs,{color:'#c9a227',weight:4,opacity:0.9}).addTo(map);
+    map.fitBounds(routeLayer.getBounds(),{padding:[50,50]});
+
+    const stopNames=valid.map(s=>s.name).join(' → ');
+    totalEl.innerHTML=`<b>${stopNames}</b><br>🚶 ${distKm} km · ~${timeStr} walking`;
+    totalEl.style.display='block';
+
+  } catch(e) {
+    console.error('ORS routing error:',e);
+    totalEl.innerHTML=`<span style="color:#ef4444">Route error: ${e.message}</span>`;
+    totalEl.style.display='block';
+  }
+}
+function clearRoute() {
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  routeMarkers.forEach(m=>map.removeLayer(m)); routeMarkers=[];
+  const dt=document.getElementById('dirTotal');
+  dt.innerHTML=''; dt.style.display='none';
+}
+
+
+
+const CHARACTERS = [{"name": "Abraham", "color": "#c9a227", "era": "Patriarchs", "born": -2000, "died": -1825, "positions": [{"year": -2000, "lat": 30.962, "lng": 46.103, "note": "Born in Ur of the Chaldees"}, {"year": -1975, "lat": 36.863, "lng": 39.022, "note": "Living in Haran with family"}, {"year": -1950, "lat": 32.208, "lng": 35.281, "note": "Enters Canaan at Shechem"}, {"year": -1948, "lat": 31.927, "lng": 35.222, "note": "Builds altar at Bethel"}, {"year": -1945, "lat": 27.0, "lng": 30.0, "note": "Sojourns in Egypt during famine"}, {"year": -1940, "lat": 31.532, "lng": 35.095, "note": "Settles in Hebron"}, {"year": -1915, "lat": 31.778, "lng": 35.235, "note": "Near Jerusalem \u2014 meets Melchizedek"}, {"year": -1900, "lat": 29.5, "lng": 34.0, "note": "Near Beersheba \u2014 Hagar expelled"}, {"year": -1890, "lat": 31.532, "lng": 35.095, "note": "Returns to Hebron"}, {"year": -1875, "lat": 28.539, "lng": 33.975, "note": "Offers Isaac on Mt. Moriah (Sinai region)"}, {"year": -1860, "lat": 31.532, "lng": 35.095, "note": "Sarah dies; buried in Machpelah, Hebron"}, {"year": -1825, "lat": 31.532, "lng": 35.095, "note": "Dies at 175 in Hebron"}]}, {"name": "Isaac", "color": "#c9a227", "era": "Patriarchs", "born": -1900, "died": -1720, "positions": [{"year": -1900, "lat": 31.252, "lng": 34.791, "note": "Born in Beersheba"}, {"year": -1860, "lat": 32.208, "lng": 35.281, "note": "Travels to Shechem region"}, {"year": -1840, "lat": 31.252, "lng": 34.791, "note": "Lives in Beersheba, digs wells"}, {"year": -1800, "lat": 31.532, "lng": 35.095, "note": "Moves to Hebron"}, {"year": -1720, "lat": 31.532, "lng": 35.095, "note": "Dies at 180 in Hebron"}]}, {"name": "Jacob", "color": "#c9a227", "era": "Patriarchs", "born": -1840, "died": -1693, "positions": [{"year": -1840, "lat": 31.532, "lng": 35.095, "note": "Born in Hebron"}, {"year": -1800, "lat": 36.863, "lng": 39.022, "note": "Flees to Haran; works for Laban"}, {"year": -1760, "lat": 32.174, "lng": 35.671, "note": "Returns \u2014 wrestles God at Jabbok"}, {"year": -1758, "lat": 32.208, "lng": 35.281, "note": "Settles at Shechem"}, {"year": -1750, "lat": 31.927, "lng": 35.222, "note": "Lives at Bethel"}, {"year": -1740, "lat": 31.532, "lng": 35.095, "note": "Settles in Hebron"}, {"year": -1700, "lat": 30.6, "lng": 31.9, "note": "Moves to Egypt to join Joseph"}, {"year": -1693, "lat": 30.6, "lng": 31.9, "note": "Dies in Egypt at 147; buried in Hebron"}]}, {"name": "Joseph", "color": "#c9a227", "era": "Patriarchs", "born": -1745, "died": -1635, "positions": [{"year": -1745, "lat": 31.532, "lng": 35.095, "note": "Born in Hebron"}, {"year": -1728, "lat": 32.418, "lng": 35.212, "note": "Sold into slavery at Dothan"}, {"year": -1725, "lat": 30.129, "lng": 31.321, "note": "Slave in Egypt \u2014 Potiphar's house"}, {"year": -1715, "lat": 30.129, "lng": 31.321, "note": "Imprisoned in Egypt"}, {"year": -1712, "lat": 29.847, "lng": 31.251, "note": "Interprets Pharaoh's dream; made vizier"}, {"year": -1700, "lat": 29.847, "lng": 31.251, "note": "Rules Egypt \u2014 stores grain"}, {"year": -1635, "lat": 30.6, "lng": 31.9, "note": "Dies in Egypt at 110"}]}, {"name": "Moses", "color": "#e07b39", "era": "Exodus", "born": -1393, "died": -1273, "positions": [{"year": -1393, "lat": 30.6, "lng": 31.9, "note": "Born in Goshen, Egypt"}, {"year": -1390, "lat": 29.847, "lng": 31.251, "note": "Raised in Pharaoh's palace"}, {"year": -1353, "lat": 28.5, "lng": 36.0, "note": "Flees to Midian \u2014 tends Jethro's flocks"}, {"year": -1313, "lat": 28.539, "lng": 33.975, "note": "Burning bush \u2014 God calls Moses"}, {"year": -1313, "lat": 30.6, "lng": 31.9, "note": "Returns to Egypt \u2014 Ten Plagues"}, {"year": -1312, "lat": 30.62, "lng": 32.05, "note": "Exodus begins \u2014 leaves Egypt"}, {"year": -1312, "lat": 28.539, "lng": 33.975, "note": "Receives the Law at Mt. Sinai"}, {"year": -1311, "lat": 29.5, "lng": 34.0, "note": "Wilderness wanderings \u2014 Paran"}, {"year": -1295, "lat": 30.671, "lng": 34.4, "note": "Long stay at Kadesh-Barnea"}, {"year": -1275, "lat": 31.2, "lng": 35.7, "note": "Camped in the plains of Moab"}, {"year": -1273, "lat": 31.764, "lng": 35.719, "note": "Dies on Mt. Nebo \u2014 views Promised Land"}]}, {"name": "Joshua", "color": "#e07b39", "era": "Exodus", "born": -1355, "died": -1245, "positions": [{"year": -1355, "lat": 30.6, "lng": 31.9, "note": "Born in Egypt"}, {"year": -1312, "lat": 28.539, "lng": 33.975, "note": "At Sinai \u2014 Moses' aide"}, {"year": -1273, "lat": 31.861, "lng": 35.444, "note": "Leads Israel across Jordan to Jericho"}, {"year": -1272, "lat": 31.861, "lng": 35.444, "note": "Conquers Jericho \u2014 walls fall"}, {"year": -1271, "lat": 31.915, "lng": 35.264, "note": "Defeats Ai"}, {"year": -1265, "lat": 31.844, "lng": 35.174, "note": "Sun stands still at Gibeon"}, {"year": -1250, "lat": 31.989, "lng": 35.297, "note": "Divides land at Shiloh"}, {"year": -1245, "lat": 32.208, "lng": 35.281, "note": "Dies at 110, buried at Timnath-serah"}]}, {"name": "Deborah", "color": "#22c55e", "era": "Judges", "born": -1150, "died": -1100, "positions": [{"year": -1150, "lat": 31.927, "lng": 35.222, "note": "Judges Israel between Ramah and Bethel"}, {"year": -1125, "lat": 32.686, "lng": 35.389, "note": "Leads Israel to victory at Mt. Tabor"}, {"year": -1100, "lat": 31.927, "lng": 35.222, "note": "40 years of peace \u2014 judges at Bethel"}]}, {"name": "Samson", "color": "#22c55e", "era": "Judges", "born": -1100, "died": -1060, "positions": [{"year": -1100, "lat": 31.773, "lng": 34.836, "note": "Born in Zorah, tribe of Dan"}, {"year": -1082, "lat": 31.502, "lng": 34.468, "note": "Marries Philistine woman at Timnah"}, {"year": -1075, "lat": 31.502, "lng": 34.468, "note": "Kills 1000 with jawbone at Lehi"}, {"year": -1065, "lat": 31.502, "lng": 34.468, "note": "Betrayed by Delilah in Gaza"}, {"year": -1060, "lat": 31.502, "lng": 34.468, "note": "Destroys temple of Dagon in Gaza \u2014 dies"}]}, {"name": "Ruth", "color": "#22c55e", "era": "Judges", "born": -1120, "died": -1060, "positions": [{"year": -1120, "lat": 31.2, "lng": 35.7, "note": "Born in Moab"}, {"year": -1100, "lat": 31.2, "lng": 35.7, "note": "Marries Israelite in Moab"}, {"year": -1090, "lat": 31.706, "lng": 35.201, "note": "Follows Naomi to Bethlehem"}, {"year": -1085, "lat": 31.706, "lng": 35.201, "note": "Gleans in Boaz's fields at Bethlehem"}, {"year": -1080, "lat": 31.706, "lng": 35.201, "note": "Marries Boaz \u2014 great-grandmother of David"}]}, {"name": "Samuel", "color": "#7c5cbf", "era": "Kings", "born": -1105, "died": -1022, "positions": [{"year": -1105, "lat": 31.927, "lng": 35.179, "note": "Born at Ramah \u2014 Hannah's prayer answered"}, {"year": -1102, "lat": 31.989, "lng": 35.297, "note": "Given to temple service at Shiloh"}, {"year": -1075, "lat": 31.989, "lng": 35.297, "note": "God calls Samuel at Shiloh"}, {"year": -1050, "lat": 31.876, "lng": 35.207, "note": "Judges Israel at Mizpah"}, {"year": -1043, "lat": 31.857, "lng": 35.247, "note": "Anoints Saul as king at Gibeah"}, {"year": -1025, "lat": 31.706, "lng": 35.201, "note": "Anoints David as king at Bethlehem"}, {"year": -1022, "lat": 31.927, "lng": 35.179, "note": "Dies at Ramah"}]}, {"name": "Saul", "color": "#7c5cbf", "era": "Kings", "born": -1079, "died": -1010, "positions": [{"year": -1079, "lat": 31.857, "lng": 35.247, "note": "Born in Gibeah of Benjamin"}, {"year": -1043, "lat": 31.876, "lng": 35.207, "note": "Anointed first king of Israel at Mizpah"}, {"year": -1043, "lat": 31.857, "lng": 35.247, "note": "Rules from Gibeah"}, {"year": -1025, "lat": 31.773, "lng": 34.836, "note": "Battles Philistines at Michmash"}, {"year": -1015, "lat": 31.688, "lng": 34.855, "note": "Wars against Philistines throughout"}, {"year": -1010, "lat": 32.498, "lng": 35.497, "note": "Dies in battle at Mt. Gilboa"}]}, {"name": "David", "color": "#7c5cbf", "era": "Kings", "born": -1040, "died": -970, "positions": [{"year": -1040, "lat": 31.706, "lng": 35.201, "note": "Born in Bethlehem"}, {"year": -1025, "lat": 31.7, "lng": 34.922, "note": "Kills Goliath in Valley of Elah"}, {"year": -1020, "lat": 31.857, "lng": 35.247, "note": "Serves in Saul's court at Gibeah"}, {"year": -1015, "lat": 32.418, "lng": 35.212, "note": "Flees Saul \u2014 hides in caves of Adullam"}, {"year": -1010, "lat": 31.532, "lng": 35.095, "note": "Reigns over Judah at Hebron"}, {"year": -1003, "lat": 31.776, "lng": 35.234, "note": "Captures Jerusalem \u2014 makes it capital"}, {"year": -1000, "lat": 31.776, "lng": 35.234, "note": "Brings Ark to Jerusalem"}, {"year": -985, "lat": 31.776, "lng": 35.234, "note": "Reigns in Jerusalem \u2014 kingdom at peak"}, {"year": -975, "lat": 32.099, "lng": 35.729, "note": "Flees Absalom's rebellion to Mahanaim"}, {"year": -970, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem at 70"}]}, {"name": "Solomon", "color": "#7c5cbf", "era": "Kings", "born": -990, "died": -931, "positions": [{"year": -990, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem"}, {"year": -970, "lat": 31.776, "lng": 35.234, "note": "Becomes king \u2014 prays for wisdom"}, {"year": -966, "lat": 31.776, "lng": 35.234, "note": "Begins building the Temple"}, {"year": -959, "lat": 31.776, "lng": 35.234, "note": "Temple completed \u2014 dedication"}, {"year": -950, "lat": 31.776, "lng": 35.234, "note": "Queen of Sheba visits Jerusalem"}, {"year": -940, "lat": 29.556, "lng": 34.951, "note": "Builds fleet at Ezion-geber (Elath)"}, {"year": -931, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem \u2014 kingdom divided"}]}, {"name": "Elijah", "color": "#3b82f6", "era": "Prophets", "born": -900, "died": -849, "positions": [{"year": -900, "lat": 32.099, "lng": 35.729, "note": "From Tishbe in Gilead"}, {"year": -875, "lat": 32.456, "lng": 35.333, "note": "Confronts Ahab at Jezreel"}, {"year": -874, "lat": 33.454, "lng": 35.295, "note": "Fed by widow at Zarephath"}, {"year": -873, "lat": 32.738, "lng": 35.055, "note": "Defeats prophets of Baal on Mt. Carmel"}, {"year": -872, "lat": 28.539, "lng": 33.975, "note": "Flees Jezebel \u2014 angel feeds him at Horeb"}, {"year": -860, "lat": 32.456, "lng": 35.333, "note": "Confronts Ahab over Naboth's vineyard"}, {"year": -849, "lat": 31.83, "lng": 35.546, "note": "Taken to heaven in whirlwind at Jordan"}]}, {"name": "Elisha", "color": "#3b82f6", "era": "Prophets", "born": -870, "died": -795, "positions": [{"year": -870, "lat": 32.456, "lng": 35.333, "note": "Born in Abel-meholah"}, {"year": -849, "lat": 31.83, "lng": 35.546, "note": "Receives Elijah's mantle at Jordan"}, {"year": -845, "lat": 31.861, "lng": 35.444, "note": "Heals waters of Jericho"}, {"year": -840, "lat": 32.418, "lng": 35.212, "note": "Raises Shunammite's son at Dothan"}, {"year": -835, "lat": 33.272, "lng": 35.194, "note": "Heals Naaman the Syrian"}, {"year": -820, "lat": 32.279, "lng": 35.195, "note": "Besieged in Samaria \u2014 army of angels"}, {"year": -795, "lat": 32.279, "lng": 35.195, "note": "Dies in Samaria"}]}, {"name": "Isaiah", "color": "#3b82f6", "era": "Prophets", "born": -765, "died": -681, "positions": [{"year": -765, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem"}, {"year": -740, "lat": 31.776, "lng": 35.234, "note": "Vision in the Temple \u2014 called to prophesy"}, {"year": -735, "lat": 31.776, "lng": 35.234, "note": "Counsels King Ahaz during Assyrian crisis"}, {"year": -715, "lat": 31.776, "lng": 35.234, "note": "Counsels King Hezekiah"}, {"year": -701, "lat": 31.776, "lng": 35.234, "note": "Prophecies Assyrian defeat \u2014 185,000 die"}, {"year": -681, "lat": 31.776, "lng": 35.234, "note": "Tradition: martyred under Manasseh"}]}, {"name": "Jeremiah", "color": "#3b82f6", "era": "Prophets", "born": -650, "died": -570, "positions": [{"year": -650, "lat": 31.927, "lng": 35.179, "note": "Born at Anathoth near Jerusalem"}, {"year": -627, "lat": 31.927, "lng": 35.179, "note": "Called to prophesy in 13th year of Josiah"}, {"year": -609, "lat": 31.776, "lng": 35.234, "note": "Prophesies in Jerusalem Temple"}, {"year": -605, "lat": 31.776, "lng": 35.234, "note": "Dictates scroll to Baruch"}, {"year": -597, "lat": 31.776, "lng": 35.234, "note": "First Babylonian siege \u2014 stays in Jerusalem"}, {"year": -587, "lat": 31.776, "lng": 35.234, "note": "Jerusalem falls \u2014 Temple destroyed"}, {"year": -586, "lat": 31.532, "lng": 35.095, "note": "Released \u2014 stays in Judah at Mizpah"}, {"year": -582, "lat": 30.6, "lng": 31.9, "note": "Taken to Egypt against his will"}, {"year": -570, "lat": 30.6, "lng": 31.9, "note": "Dies in Egypt"}]}, {"name": "Daniel", "color": "#3b82f6", "era": "Prophets", "born": -623, "died": -536, "positions": [{"year": -623, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem, of royal descent"}, {"year": -605, "lat": 32.543, "lng": 44.42, "note": "Taken captive to Babylon"}, {"year": -600, "lat": 32.543, "lng": 44.42, "note": "Interprets Nebuchadnezzar's dreams"}, {"year": -570, "lat": 32.543, "lng": 44.42, "note": "Three friends in the fiery furnace"}, {"year": -550, "lat": 32.187, "lng": 48.247, "note": "Vision by the river Ulai at Susa"}, {"year": -539, "lat": 32.543, "lng": 44.42, "note": "Writing on the wall \u2014 Babylon falls"}, {"year": -538, "lat": 32.543, "lng": 44.42, "note": "Cast into lions' den \u2014 delivered"}, {"year": -536, "lat": 32.543, "lng": 44.42, "note": "Final visions \u2014 dies in Babylon"}]}, {"name": "Nehemiah", "color": "#3b82f6", "era": "Prophets", "born": -480, "died": -420, "positions": [{"year": -480, "lat": 32.187, "lng": 48.247, "note": "Born in Susa, Persia"}, {"year": -445, "lat": 32.187, "lng": 48.247, "note": "Cupbearer to King Artaxerxes in Susa"}, {"year": -445, "lat": 31.776, "lng": 35.234, "note": "Returns to Jerusalem \u2014 rebuilds walls in 52 days"}, {"year": -433, "lat": 32.187, "lng": 48.247, "note": "Returns to Persia"}, {"year": -430, "lat": 31.776, "lng": 35.234, "note": "Returns to Jerusalem for religious reforms"}, {"year": -420, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Esther", "color": "#3b82f6", "era": "Prophets", "born": -492, "died": -460, "positions": [{"year": -492, "lat": 32.187, "lng": 48.247, "note": "Born in Susa, Persia \u2014 Jewish exile"}, {"year": -479, "lat": 32.187, "lng": 48.247, "note": "Chosen as queen by Ahasuerus in Susa"}, {"year": -474, "lat": 32.187, "lng": 48.247, "note": "Exposes Haman's plot \u2014 saves Jewish people"}, {"year": -460, "lat": 32.187, "lng": 48.247, "note": "Dies in Susa"}]}, {"name": "John the Baptist", "color": "#ef4444", "era": "New Testament", "born": -5, "died": 29, "positions": [{"year": -5, "lat": 31.532, "lng": 35.095, "note": "Born in hill country of Judea"}, {"year": 26, "lat": 31.861, "lng": 35.546, "note": "Baptizing at Bethabara \u2014 Jordan River"}, {"year": 27, "lat": 32.39, "lng": 35.49, "note": "Baptizing at Aenon near Salim"}, {"year": 28, "lat": 31.861, "lng": 35.444, "note": "Imprisoned by Herod Antipas"}, {"year": 29, "lat": 31.861, "lng": 35.444, "note": "Beheaded at Herod's fortress Machaerus"}]}, {"name": "Jesus", "color": "#f59e0b", "era": "New Testament", "born": -4, "died": 30, "positions": [{"year": -4, "lat": 31.706, "lng": 35.201, "note": "Born in Bethlehem"}, {"year": -3, "lat": 27.0, "lng": 30.0, "note": "Taken to Egypt \u2014 flee from Herod"}, {"year": -2, "lat": 32.699, "lng": 35.303, "note": "Returns to Nazareth \u2014 grows up here"}, {"year": 12, "lat": 31.776, "lng": 35.234, "note": "Age 12 \u2014 found in the Temple"}, {"year": 26, "lat": 32.699, "lng": 35.303, "note": "In Nazareth before public ministry"}, {"year": 27, "lat": 31.83, "lng": 35.546, "note": "Baptized by John in the Jordan River"}, {"year": 27, "lat": 30.671, "lng": 34.4, "note": "40 days temptation in the wilderness"}, {"year": 27, "lat": 32.745, "lng": 35.353, "note": "First miracle \u2014 water to wine at Cana"}, {"year": 28, "lat": 32.881, "lng": 35.575, "note": "Ministry based at Capernaum"}, {"year": 28, "lat": 32.833, "lng": 35.6, "note": "Calls disciples \u2014 walks on Sea of Galilee"}, {"year": 29, "lat": 33.248, "lng": 35.692, "note": "Transfiguration at Caesarea Philippi"}, {"year": 29, "lat": 31.77, "lng": 35.259, "note": "Raises Lazarus at Bethany"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Triumphal entry into Jerusalem"}, {"year": 30, "lat": 31.779, "lng": 35.238, "note": "Arrested at Gethsemane"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Crucified at Golgotha"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Resurrection \u2014 appears to disciples"}, {"year": 30, "lat": 31.778, "lng": 35.244, "note": "Ascension from the Mount of Olives"}]}, {"name": "Peter", "color": "#ef4444", "era": "New Testament", "born": -1, "died": 67, "positions": [{"year": -1, "lat": 32.906, "lng": 35.629, "note": "Born in Bethsaida"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Called by Jesus at Capernaum"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Denies Jesus in Jerusalem"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost \u2014 3000 baptised"}, {"year": 35, "lat": 31.952, "lng": 34.896, "note": "Heals Aeneas at Lydda"}, {"year": 35, "lat": 32.055, "lng": 34.751, "note": "Raises Dorcas at Joppa"}, {"year": 36, "lat": 32.502, "lng": 34.906, "note": "Cornelius converted at Caesarea"}, {"year": 49, "lat": 36.202, "lng": 36.16, "note": "Jerusalem Council \u2014 then Antioch"}, {"year": 60, "lat": 41.902, "lng": 12.496, "note": "Ministers in Rome"}, {"year": 67, "lat": 41.902, "lng": 12.496, "note": "Martyred in Rome under Nero"}]}, {"name": "Mary (Mother of Jesus)", "color": "#ef4444", "era": "New Testament", "born": -18, "died": 54, "positions": [{"year": -18, "lat": 32.699, "lng": 35.303, "note": "Born in Nazareth"}, {"year": -4, "lat": 31.706, "lng": 35.201, "note": "Gives birth to Jesus in Bethlehem"}, {"year": -3, "lat": 27.0, "lng": 30.0, "note": "Flees to Egypt with Joseph and Jesus"}, {"year": -2, "lat": 32.699, "lng": 35.303, "note": "Returns to Nazareth"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Witnesses crucifixion at Golgotha"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Present at Pentecost in Jerusalem"}, {"year": 37, "lat": 37.939, "lng": 27.34, "note": "Tradition: lived in Ephesus with John"}, {"year": 54, "lat": 37.939, "lng": 27.34, "note": "Tradition: died in Ephesus"}]}, {"name": "Paul", "color": "#ef4444", "era": "New Testament", "born": 5, "died": 67, "positions": [{"year": 5, "lat": 36.91, "lng": 34.895, "note": "Born in Tarsus, Cilicia"}, {"year": 20, "lat": 31.776, "lng": 35.234, "note": "Studies under Gamaliel in Jerusalem"}, {"year": 34, "lat": 31.776, "lng": 35.234, "note": "Consents to Stephen's stoning"}, {"year": 35, "lat": 33.511, "lng": 36.291, "note": "Conversion on road to Damascus"}, {"year": 35, "lat": 24.0, "lng": 45.0, "note": "Goes to Arabia after conversion"}, {"year": 38, "lat": 31.776, "lng": 35.234, "note": "First visit to Jerusalem as believer"}, {"year": 46, "lat": 36.202, "lng": 36.16, "note": "First missionary journey begins \u2014 Antioch"}, {"year": 46, "lat": 35.183, "lng": 33.901, "note": "Cyprus \u2014 Salamis and Paphos"}, {"year": 47, "lat": 38.239, "lng": 31.215, "note": "Antioch in Pisidia"}, {"year": 47, "lat": 37.573, "lng": 32.343, "note": "Stoned and left for dead at Lystra"}, {"year": 49, "lat": 31.776, "lng": 35.234, "note": "Jerusalem Council"}, {"year": 50, "lat": 41.013, "lng": 24.287, "note": "Second journey \u2014 Philippi, first European church"}, {"year": 50, "lat": 40.64, "lng": 22.944, "note": "Thessalonica \u2014 then Berea"}, {"year": 51, "lat": 37.983, "lng": 23.727, "note": "Mars Hill speech in Athens"}, {"year": 51, "lat": 37.906, "lng": 22.882, "note": "18 months in Corinth"}, {"year": 53, "lat": 37.939, "lng": 27.34, "note": "Third journey \u2014 3 years in Ephesus"}, {"year": 57, "lat": 31.776, "lng": 35.234, "note": "Arrested in Jerusalem Temple"}, {"year": 58, "lat": 32.502, "lng": 34.906, "note": "Imprisoned 2 years in Caesarea Maritima"}, {"year": 60, "lat": 35.937, "lng": 14.375, "note": "Shipwrecked on Malta"}, {"year": 61, "lat": 41.902, "lng": 12.496, "note": "Arrives in Rome \u2014 house arrest"}, {"year": 67, "lat": 41.902, "lng": 12.496, "note": "Beheaded in Rome under Nero"}]}, {"name": "Mary Magdalene", "color": "#ef4444", "era": "New Testament", "born": -4, "died": 63, "positions": [{"year": -4, "lat": 32.833, "lng": 35.6, "note": "From Magdala on Sea of Galilee"}, {"year": 28, "lat": 32.833, "lng": 35.6, "note": "Healed of seven demons by Jesus"}, {"year": 29, "lat": 31.776, "lng": 35.234, "note": "Travels with Jesus to Jerusalem"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Present at the crucifixion"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "First witness of the resurrection"}, {"year": 63, "lat": 37.939, "lng": 27.34, "note": "Tradition: died in Ephesus"}]}, {"name": "John (Apostle)", "color": "#ef4444", "era": "New Testament", "born": 6, "died": 100, "positions": [{"year": 6, "lat": 32.906, "lng": 35.629, "note": "Born in Bethsaida"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Called by Jesus at Capernaum"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Beloved disciple \u2014 at the cross"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "First at empty tomb \u2014 Pentecost"}, {"year": 48, "lat": 31.776, "lng": 35.234, "note": "Pillar of Jerusalem church"}, {"year": 67, "lat": 37.939, "lng": 27.34, "note": "Ministers in Ephesus"}, {"year": 95, "lat": 37.316, "lng": 26.548, "note": "Exiled to island of Patmos \u2014 writes Revelation"}, {"year": 100, "lat": 37.939, "lng": 27.34, "note": "Dies in Ephesus \u2014 only apostle not martyred"}]}, {"name": "Stephen", "color": "#ef4444", "era": "New Testament", "born": 8, "died": 34, "positions": [{"year": 8, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem"}, {"year": 31, "lat": 31.776, "lng": 35.234, "note": "Chosen as first deacon"}, {"year": 34, "lat": 31.776, "lng": 35.234, "note": "First Christian martyr \u2014 stoned in Jerusalem"}]}, {"name": "Barnabas", "color": "#ef4444", "era": "New Testament", "born": 5, "died": 61, "positions": [{"year": 5, "lat": 35.126, "lng": 33.43, "note": "Born in Cyprus"}, {"year": 31, "lat": 31.776, "lng": 35.234, "note": "Sells field \u2014 gives to Jerusalem church"}, {"year": 38, "lat": 31.776, "lng": 35.234, "note": "Introduces Paul to apostles"}, {"year": 44, "lat": 36.202, "lng": 36.16, "note": "Teaches in Antioch with Paul"}, {"year": 46, "lat": 35.183, "lng": 33.901, "note": "First missionary journey \u2014 Cyprus"}, {"year": 49, "lat": 36.202, "lng": 36.16, "note": "Splits with Paul over Mark \u2014 returns to Cyprus"}, {"year": 61, "lat": 35.126, "lng": 33.43, "note": "Tradition: martyred in Cyprus"}]}, {"name": "Noah", "color": "#c9a227", "era": "Patriarchs", "born": -2900, "died": -1950, "positions": [{"year": -2900, "lat": 37.0, "lng": 43.0, "note": "Born in Mesopotamia region"}, {"year": -2348, "lat": 37.0, "lng": 43.0, "note": "Builds the ark \u2014 flood judgment"}, {"year": -2347, "lat": 39.703, "lng": 44.296, "note": "Ark rests on Mt. Ararat"}, {"year": -2346, "lat": 37.0, "lng": 43.0, "note": "Settles and plants a vineyard"}, {"year": -1950, "lat": 37.0, "lng": 43.0, "note": "Dies at 950 years old"}]}, {"name": "Enoch", "color": "#c9a227", "era": "Patriarchs", "born": -3382, "died": -3017, "positions": [{"year": -3382, "lat": 33.0, "lng": 44.0, "note": "Born \u2014 seventh from Adam"}, {"year": -3017, "lat": 33.0, "lng": 44.0, "note": "Walked with God \u2014 taken without dying"}]}, {"name": "Shem", "color": "#c9a227", "era": "Patriarchs", "born": -2448, "died": -1848, "positions": [{"year": -2448, "lat": 37.0, "lng": 43.0, "note": "Born to Noah"}, {"year": -2347, "lat": 39.703, "lng": 44.296, "note": "On the ark with Noah"}, {"year": -2300, "lat": 36.863, "lng": 39.022, "note": "Ancestor of Semitic peoples \u2014 Haran region"}, {"year": -1848, "lat": 36.863, "lng": 39.022, "note": "Dies at 600"}]}, {"name": "Lot", "color": "#c9a227", "era": "Patriarchs", "born": -1980, "died": -1850, "positions": [{"year": -1980, "lat": 30.962, "lng": 46.103, "note": "Born in Ur with Abraham"}, {"year": -1950, "lat": 36.863, "lng": 39.022, "note": "Travels with Abraham through Haran"}, {"year": -1945, "lat": 31.532, "lng": 35.095, "note": "Travels with Abraham in Canaan"}, {"year": -1940, "lat": 31.5, "lng": 35.5, "note": "Chooses the plain of Jordan near Sodom"}, {"year": -1915, "lat": 31.3, "lng": 35.48, "note": "Captured by kings \u2014 rescued by Abraham"}, {"year": -1900, "lat": 30.97, "lng": 35.47, "note": "Escapes destruction of Sodom"}, {"year": -1900, "lat": 31.1, "lng": 35.45, "note": "Dwells in caves of Zoar with daughters"}]}, {"name": "Rebekah", "color": "#c9a227", "era": "Patriarchs", "born": -1860, "died": -1750, "positions": [{"year": -1860, "lat": 36.863, "lng": 39.022, "note": "Born in Haran \u2014 Laban's sister"}, {"year": -1840, "lat": 31.252, "lng": 34.791, "note": "Marries Isaac at Beersheba"}, {"year": -1810, "lat": 31.252, "lng": 34.791, "note": "Jacob and Esau born at Beersheba"}, {"year": -1800, "lat": 31.532, "lng": 35.095, "note": "Lives in Hebron"}, {"year": -1750, "lat": 31.532, "lng": 35.095, "note": "Buried in cave of Machpelah, Hebron"}]}, {"name": "Rachel", "color": "#c9a227", "era": "Patriarchs", "born": -1820, "died": -1766, "positions": [{"year": -1820, "lat": 36.863, "lng": 39.022, "note": "Born in Haran \u2014 Laban's daughter"}, {"year": -1800, "lat": 36.863, "lng": 39.022, "note": "Jacob serves 7 years for Rachel"}, {"year": -1766, "lat": 31.706, "lng": 35.201, "note": "Dies giving birth to Benjamin near Bethlehem"}]}, {"name": "Leah", "color": "#c9a227", "era": "Patriarchs", "born": -1822, "died": -1750, "positions": [{"year": -1822, "lat": 36.863, "lng": 39.022, "note": "Born in Haran \u2014 Laban's elder daughter"}, {"year": -1800, "lat": 36.863, "lng": 39.022, "note": "Given to Jacob in place of Rachel"}, {"year": -1760, "lat": 32.208, "lng": 35.281, "note": "Returns with Jacob to Canaan"}, {"year": -1750, "lat": 31.532, "lng": 35.095, "note": "Buried in cave of Machpelah, Hebron"}]}, {"name": "Aaron", "color": "#e07b39", "era": "Exodus", "born": -1396, "died": -1273, "positions": [{"year": -1396, "lat": 30.6, "lng": 31.9, "note": "Born in Egypt \u2014 Moses' older brother"}, {"year": -1313, "lat": 30.6, "lng": 31.9, "note": "Speaks for Moses before Pharaoh"}, {"year": -1312, "lat": 28.539, "lng": 33.975, "note": "At Sinai \u2014 makes the golden calf"}, {"year": -1310, "lat": 29.5, "lng": 34.0, "note": "Wilderness wanderings with Israel"}, {"year": -1273, "lat": 30.329, "lng": 35.441, "note": "Dies on Mt. Hor at age 123"}]}, {"name": "Miriam", "color": "#e07b39", "era": "Exodus", "born": -1398, "died": -1283, "positions": [{"year": -1398, "lat": 30.6, "lng": 31.9, "note": "Born in Egypt \u2014 Moses' sister"}, {"year": -1393, "lat": 30.6, "lng": 31.9, "note": "Watches baby Moses in the basket"}, {"year": -1312, "lat": 30.62, "lng": 32.05, "note": "Leads women in song after Red Sea crossing"}, {"year": -1295, "lat": 30.671, "lng": 34.4, "note": "Struck with leprosy at Hazeroth"}, {"year": -1283, "lat": 30.671, "lng": 34.4, "note": "Dies at Kadesh-Barnea"}]}, {"name": "Caleb", "color": "#e07b39", "era": "Exodus", "born": -1355, "died": -1240, "positions": [{"year": -1355, "lat": 30.6, "lng": 31.9, "note": "Born in Egypt \u2014 tribe of Judah"}, {"year": -1295, "lat": 30.671, "lng": 34.4, "note": "One of 12 spies sent from Kadesh"}, {"year": -1273, "lat": 31.861, "lng": 35.444, "note": "Enters Promised Land with Joshua"}, {"year": -1260, "lat": 31.532, "lng": 35.095, "note": "Receives Hebron as his inheritance"}, {"year": -1240, "lat": 31.532, "lng": 35.095, "note": "Dies at 85 still fully strong"}]}, {"name": "Jethro", "color": "#e07b39", "era": "Exodus", "born": -1420, "died": -1290, "positions": [{"year": -1420, "lat": 28.5, "lng": 36.0, "note": "Priest of Midian"}, {"year": -1353, "lat": 28.5, "lng": 36.0, "note": "Moses marries his daughter Zipporah"}, {"year": -1312, "lat": 28.539, "lng": 33.975, "note": "Visits Moses at Sinai \u2014 advises on leadership"}, {"year": -1290, "lat": 28.5, "lng": 36.0, "note": "Returns to Midian \u2014 dies there"}]}, {"name": "Rahab", "color": "#e07b39", "era": "Exodus", "born": -1290, "died": -1220, "positions": [{"year": -1290, "lat": 31.861, "lng": 35.444, "note": "Born in Jericho"}, {"year": -1273, "lat": 31.861, "lng": 35.444, "note": "Hides the two Israelite spies \u2014 scarlet cord"}, {"year": -1272, "lat": 31.861, "lng": 35.444, "note": "Saved when Jericho falls \u2014 joins Israel"}, {"year": -1250, "lat": 31.706, "lng": 35.201, "note": "Marries Salmon \u2014 great-great-grandmother of David"}, {"year": -1220, "lat": 31.706, "lng": 35.201, "note": "Dies in Bethlehem region"}]}, {"name": "Gideon", "color": "#22c55e", "era": "Judges", "born": -1190, "died": -1150, "positions": [{"year": -1190, "lat": 32.456, "lng": 35.333, "note": "From Ophrah \u2014 threshes wheat in winepress"}, {"year": -1175, "lat": 32.456, "lng": 35.333, "note": "Angel appears \u2014 called to deliver Israel"}, {"year": -1174, "lat": 32.584, "lng": 35.183, "note": "300 men defeat Midianites at Jezreel valley"}, {"year": -1170, "lat": 32.279, "lng": 35.195, "note": "Refuses kingship \u2014 judges Israel 40 years"}, {"year": -1150, "lat": 32.456, "lng": 35.333, "note": "Dies in Ophrah at good old age"}]}, {"name": "Jephthah", "color": "#22c55e", "era": "Judges", "born": -1140, "died": -1100, "positions": [{"year": -1140, "lat": 32.099, "lng": 35.729, "note": "Born in Gilead \u2014 son of harlot"}, {"year": -1120, "lat": 33.0, "lng": 36.0, "note": "Flees brothers \u2014 lives in land of Tob"}, {"year": -1105, "lat": 32.099, "lng": 35.729, "note": "Called back to lead against Ammonites"}, {"year": -1104, "lat": 31.955, "lng": 35.944, "note": "Defeats Ammonites \u2014 tragic vow about daughter"}, {"year": -1100, "lat": 32.099, "lng": 35.729, "note": "Judges Israel 6 years \u2014 dies in Gilead"}]}, {"name": "Naomi", "color": "#22c55e", "era": "Judges", "born": -1140, "died": -1060, "positions": [{"year": -1140, "lat": 31.706, "lng": 35.201, "note": "Born in Bethlehem"}, {"year": -1110, "lat": 31.2, "lng": 35.7, "note": "Moves to Moab with husband and sons"}, {"year": -1090, "lat": 31.706, "lng": 35.201, "note": "Returns to Bethlehem widowed with Ruth"}, {"year": -1080, "lat": 31.706, "lng": 35.201, "note": "Ruth marries Boaz \u2014 Naomi holds grandson Obed"}, {"year": -1060, "lat": 31.706, "lng": 35.201, "note": "Dies in Bethlehem"}]}, {"name": "Boaz", "color": "#22c55e", "era": "Judges", "born": -1120, "died": -1060, "positions": [{"year": -1120, "lat": 31.706, "lng": 35.201, "note": "Born in Bethlehem \u2014 prominent landowner"}, {"year": -1085, "lat": 31.706, "lng": 35.201, "note": "Ruth gleans in his fields"}, {"year": -1083, "lat": 31.706, "lng": 35.201, "note": "Marries Ruth at city gate of Bethlehem"}, {"year": -1060, "lat": 31.706, "lng": 35.201, "note": "Dies in Bethlehem \u2014 father of Obed"}]}, {"name": "Abigail", "color": "#7c5cbf", "era": "Kings", "born": -1030, "died": -980, "positions": [{"year": -1030, "lat": 31.252, "lng": 34.791, "note": "Lives in Carmel of Judah"}, {"year": -1012, "lat": 31.252, "lng": 34.791, "note": "Intercedes for Nabal \u2014 stops David's revenge"}, {"year": -1011, "lat": 31.252, "lng": 34.791, "note": "Nabal dies \u2014 marries David"}, {"year": -1010, "lat": 31.532, "lng": 35.095, "note": "Goes with David to Hebron"}, {"year": -980, "lat": 31.776, "lng": 35.234, "note": "Lives in Jerusalem with David"}]}, {"name": "Jonathan", "color": "#7c5cbf", "era": "Kings", "born": -1060, "died": -1010, "positions": [{"year": -1060, "lat": 31.857, "lng": 35.247, "note": "Born at Gibeah \u2014 Saul's son"}, {"year": -1025, "lat": 31.857, "lng": 35.247, "note": "Attacks Philistine garrison \u2014 great victory"}, {"year": -1020, "lat": 31.857, "lng": 35.247, "note": "Makes covenant of friendship with David"}, {"year": -1015, "lat": 31.857, "lng": 35.247, "note": "Protects David from Saul's wrath"}, {"year": -1010, "lat": 32.498, "lng": 35.497, "note": "Dies with Saul at Mt. Gilboa"}]}, {"name": "Bathsheba", "color": "#7c5cbf", "era": "Kings", "born": -1000, "died": -945, "positions": [{"year": -1000, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem"}, {"year": -983, "lat": 31.776, "lng": 35.234, "note": "David sees her \u2014 Uriah sent to his death"}, {"year": -982, "lat": 31.776, "lng": 35.234, "note": "Marries David \u2014 first child dies"}, {"year": -980, "lat": 31.776, "lng": 35.234, "note": "Bears Solomon in Jerusalem"}, {"year": -970, "lat": 31.776, "lng": 35.234, "note": "Secures Solomon's succession as king"}, {"year": -945, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Absalom", "color": "#7c5cbf", "era": "Kings", "born": -1005, "died": -975, "positions": [{"year": -1005, "lat": 31.776, "lng": 35.234, "note": "Born to David in Jerusalem"}, {"year": -985, "lat": 33.511, "lng": 36.291, "note": "Flees to Geshur after killing Amnon"}, {"year": -982, "lat": 31.776, "lng": 35.234, "note": "Returns to Jerusalem \u2014 reconciled with David"}, {"year": -977, "lat": 31.776, "lng": 35.234, "note": "Steals hearts of Israel \u2014 rebels"}, {"year": -975, "lat": 32.099, "lng": 35.729, "note": "Defeated in forest of Ephraim \u2014 killed by Joab"}]}, {"name": "Rehoboam", "color": "#7c5cbf", "era": "Kings", "born": -975, "died": -913, "positions": [{"year": -975, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 Solomon's son"}, {"year": -931, "lat": 32.208, "lng": 35.281, "note": "Coronation at Shechem \u2014 refuses to lighten burden"}, {"year": -931, "lat": 31.776, "lng": 35.234, "note": "Kingdom splits \u2014 rules Judah from Jerusalem"}, {"year": -926, "lat": 31.776, "lng": 35.234, "note": "Shishak of Egypt plunders Jerusalem"}, {"year": -913, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem after 17 year reign"}]}, {"name": "Jeroboam I", "color": "#7c5cbf", "era": "Kings", "born": -975, "died": -910, "positions": [{"year": -975, "lat": 32.279, "lng": 35.195, "note": "Born in Zeredah \u2014 Solomon's officer"}, {"year": -945, "lat": 30.129, "lng": 31.321, "note": "Flees to Egypt from Solomon"}, {"year": -931, "lat": 32.279, "lng": 35.195, "note": "Returns \u2014 leads northern tribes, rules Israel"}, {"year": -930, "lat": 32.209, "lng": 35.282, "note": "Sets up golden calves at Dan and Bethel"}, {"year": -910, "lat": 32.279, "lng": 35.195, "note": "Dies \u2014 son Nadab succeeds him"}]}, {"name": "Amos", "color": "#3b82f6", "era": "Prophets", "born": -800, "died": -750, "positions": [{"year": -800, "lat": 31.706, "lng": 35.201, "note": "Shepherd from Tekoa near Bethlehem"}, {"year": -760, "lat": 32.279, "lng": 35.195, "note": "Prophesies in Samaria \u2014 northern kingdom"}, {"year": -760, "lat": 31.927, "lng": 35.222, "note": "Confronts priest Amaziah at Bethel"}, {"year": -750, "lat": 31.706, "lng": 35.201, "note": "Returns to Tekoa \u2014 dies"}]}, {"name": "Hosea", "color": "#3b82f6", "era": "Prophets", "born": -795, "died": -725, "positions": [{"year": -795, "lat": 32.279, "lng": 35.195, "note": "Born in northern Israel"}, {"year": -760, "lat": 32.279, "lng": 35.195, "note": "Marries Gomer \u2014 symbol of Israel's unfaithfulness"}, {"year": -740, "lat": 32.279, "lng": 35.195, "note": "Prophesies coming Assyrian conquest"}, {"year": -725, "lat": 32.279, "lng": 35.195, "note": "Dies before fall of Samaria"}]}, {"name": "Micah", "color": "#3b82f6", "era": "Prophets", "born": -750, "died": -687, "positions": [{"year": -750, "lat": 31.688, "lng": 34.855, "note": "From Moresheth Gath near Lachish"}, {"year": -730, "lat": 31.776, "lng": 35.234, "note": "Prophesies in Jerusalem \u2014 temple to be destroyed"}, {"year": -715, "lat": 31.706, "lng": 35.201, "note": "Prophecies Messiah born in Bethlehem (Mic 5:2)"}, {"year": -687, "lat": 31.688, "lng": 34.855, "note": "Dies in Moresheth"}]}, {"name": "Habakkuk", "color": "#3b82f6", "era": "Prophets", "born": -640, "died": -600, "positions": [{"year": -640, "lat": 31.776, "lng": 35.234, "note": "Levite prophet in Jerusalem"}, {"year": -609, "lat": 31.776, "lng": 35.234, "note": "Wrestles with God over Babylonian rise"}, {"year": -605, "lat": 31.776, "lng": 35.234, "note": "Receives vision \u2014 the just shall live by faith"}, {"year": -600, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Zephaniah", "color": "#3b82f6", "era": "Prophets", "born": -650, "died": -620, "positions": [{"year": -650, "lat": 31.776, "lng": 35.234, "note": "Descendant of Hezekiah \u2014 born in Jerusalem"}, {"year": -630, "lat": 31.776, "lng": 35.234, "note": "Prophesies during Josiah's reign"}, {"year": -625, "lat": 31.776, "lng": 35.234, "note": "Announces Day of the Lord judgment"}, {"year": -620, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Haggai", "color": "#3b82f6", "era": "Prophets", "born": -560, "died": -520, "positions": [{"year": -560, "lat": 32.543, "lng": 44.42, "note": "Born in Babylon during exile"}, {"year": -538, "lat": 31.776, "lng": 35.234, "note": "Returns to Jerusalem with Zerubbabel"}, {"year": -520, "lat": 31.776, "lng": 35.234, "note": "Urges rebuilding of the Temple"}, {"year": -516, "lat": 31.776, "lng": 35.234, "note": "Temple completed \u2014 prophecies of glory"}]}, {"name": "Zechariah", "color": "#3b82f6", "era": "Prophets", "born": -558, "died": -518, "positions": [{"year": -558, "lat": 32.543, "lng": 44.42, "note": "Born in Babylon \u2014 priestly family"}, {"year": -538, "lat": 31.776, "lng": 35.234, "note": "Returns with exiles to Jerusalem"}, {"year": -520, "lat": 31.776, "lng": 35.234, "note": "Eight night visions \u2014 Messianic prophecies"}, {"year": -518, "lat": 31.776, "lng": 35.234, "note": "Prophecies of Palm Sunday entry (Zech 9:9)"}]}, {"name": "Malachi", "color": "#3b82f6", "era": "Prophets", "born": -450, "died": -400, "positions": [{"year": -450, "lat": 31.776, "lng": 35.234, "note": "Last OT prophet \u2014 Jerusalem"}, {"year": -430, "lat": 31.776, "lng": 35.234, "note": "Rebukes priests and people for corruption"}, {"year": -425, "lat": 31.776, "lng": 35.234, "note": "Prophecy of Elijah's return before Messiah"}, {"year": -400, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem \u2014 400 years of prophetic silence"}]}, {"name": "Ezra", "color": "#3b82f6", "era": "Prophets", "born": -480, "died": -440, "positions": [{"year": -480, "lat": 32.543, "lng": 44.42, "note": "Born in Babylon \u2014 priest and scribe"}, {"year": -458, "lat": 32.543, "lng": 44.42, "note": "Leads second wave of exiles from Babylon"}, {"year": -457, "lat": 31.776, "lng": 35.234, "note": "Arrives Jerusalem \u2014 teaches the Law"}, {"year": -444, "lat": 31.776, "lng": 35.234, "note": "Reads Law publicly with Nehemiah \u2014 great revival"}, {"year": -440, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Ezekiel", "color": "#3b82f6", "era": "Prophets", "born": -623, "died": -571, "positions": [{"year": -623, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 priestly family"}, {"year": -597, "lat": 32.543, "lng": 44.42, "note": "Taken captive to Babylon with Jehoiachin"}, {"year": -593, "lat": 32.543, "lng": 44.42, "note": "Called by vision of four living creatures"}, {"year": -587, "lat": 32.543, "lng": 44.42, "note": "Hears of Jerusalem's fall in Babylon"}, {"year": -573, "lat": 32.543, "lng": 44.42, "note": "Vision of restored Temple"}, {"year": -571, "lat": 32.543, "lng": 44.42, "note": "Dies in Babylon"}]}, {"name": "Joel", "color": "#3b82f6", "era": "Prophets", "born": -840, "died": -800, "positions": [{"year": -840, "lat": 31.776, "lng": 35.234, "note": "Son of Pethuel \u2014 prophesies in Judah"}, {"year": -825, "lat": 31.776, "lng": 35.234, "note": "Great locust plague \u2014 call to repentance"}, {"year": -820, "lat": 31.776, "lng": 35.234, "note": "Prophecy of Pentecost \u2014 pour out Spirit on all flesh"}, {"year": -800, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem"}]}, {"name": "Obadiah", "color": "#3b82f6", "era": "Prophets", "born": -590, "died": -550, "positions": [{"year": -590, "lat": 31.776, "lng": 35.234, "note": "Prophesies in Jerusalem after its fall"}, {"year": -587, "lat": 30.329, "lng": 35.441, "note": "Pronounces judgment on Edom for betraying Judah"}, {"year": -550, "lat": 31.776, "lng": 35.234, "note": "Dies \u2014 shortest book of the Old Testament"}]}, {"name": "Jonah", "color": "#3b82f6", "era": "Prophets", "born": -800, "died": -750, "positions": [{"year": -800, "lat": 32.72, "lng": 35.29, "note": "Born in Gath-hepher, Galilee"}, {"year": -780, "lat": 32.085, "lng": 34.755, "note": "Arrives Joppa \u2014 boards ship to Tarshish"}, {"year": -780, "lat": 34.8, "lng": 32.5, "note": "Great storm near Cyprus \u2014 thrown overboard by sailors"}, {"year": -780, "lat": 33.8, "lng": 33.5, "note": "Three days and nights in belly of the great fish"}, {"year": -779, "lat": 31.812, "lng": 34.64, "note": "Fish vomits Jonah onto dry land near Ashdod"}, {"year": -779, "lat": 36.359, "lng": 43.155, "note": "Walks through Nineveh \u2014 120,000 souls repent"}, {"year": -779, "lat": 36.28, "lng": 43.35, "note": "Sits east of Nineveh \u2014 angry under gourd vine"}, {"year": -750, "lat": 32.68, "lng": 35.33, "note": "Returns to Gath-hepher \u2014 dies"}]}, {"name": "Nahum", "color": "#3b82f6", "era": "Prophets", "born": -680, "died": -620, "positions": [{"year": -680, "lat": 32.636, "lng": 35.358, "note": "From Elkosh \u2014 possibly in Galilee"}, {"year": -663, "lat": 31.776, "lng": 35.234, "note": "Prophesies fall of No-Amon (Thebes)"}, {"year": -640, "lat": 31.776, "lng": 35.234, "note": "Prophecies destruction of Nineveh"}, {"year": -620, "lat": 31.776, "lng": 35.234, "note": "Dies before Nineveh falls in 612 BC"}]}, {"name": "Joseph (husband of Mary)", "color": "#ef4444", "era": "New Testament", "born": -20, "died": 18, "positions": [{"year": -20, "lat": 31.706, "lng": 35.201, "note": "Born in Bethlehem \u2014 of David's line"}, {"year": -5, "lat": 32.699, "lng": 35.303, "note": "Carpenter in Nazareth \u2014 betrothed to Mary"}, {"year": -4, "lat": 31.706, "lng": 35.201, "note": "Travels to Bethlehem \u2014 Jesus born"}, {"year": -3, "lat": 27.0, "lng": 30.0, "note": "Flees to Egypt with Mary and Jesus"}, {"year": -2, "lat": 32.699, "lng": 35.303, "note": "Returns to Nazareth"}, {"year": 12, "lat": 31.776, "lng": 35.234, "note": "Brings Jesus to Temple at age 12"}, {"year": 18, "lat": 32.699, "lng": 35.303, "note": "Dies in Nazareth before Jesus' ministry"}]}, {"name": "Andrew", "color": "#ef4444", "era": "New Testament", "born": -4, "died": 60, "positions": [{"year": -4, "lat": 32.906, "lng": 35.629, "note": "Born in Bethsaida"}, {"year": 27, "lat": 31.83, "lng": 35.546, "note": "Disciple of John the Baptist \u2014 at Jordan"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "First called by Jesus at Capernaum"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Present at Pentecost in Jerusalem"}, {"year": 45, "lat": 37.983, "lng": 23.727, "note": "Preaches in Greece \u2014 Achaia region"}, {"year": 60, "lat": 38.246, "lng": 21.734, "note": "Martyred in Patras, Greece \u2014 crucified on X cross"}]}, {"name": "James (son of Zebedee)", "color": "#ef4444", "era": "New Testament", "born": -4, "died": 44, "positions": [{"year": -4, "lat": 32.906, "lng": 35.629, "note": "Born in Bethsaida with brother John"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Called by Jesus at Capernaum \u2014 'Son of Thunder'"}, {"year": 29, "lat": 33.248, "lng": 35.692, "note": "At Transfiguration with Jesus"}, {"year": 30, "lat": 31.779, "lng": 35.238, "note": "At Gethsemane with Jesus"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost in Jerusalem"}, {"year": 44, "lat": 31.776, "lng": 35.234, "note": "First apostle martyred \u2014 beheaded by Herod Agrippa"}]}, {"name": "Thomas", "color": "#ef4444", "era": "New Testament", "born": -1, "died": 72, "positions": [{"year": -1, "lat": 32.906, "lng": 35.629, "note": "Born near Galilee"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Called by Jesus \u2014 called Didymus (Twin)"}, {"year": 29, "lat": 31.77, "lng": 35.259, "note": "Willing to die with Jesus going to Lazarus"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Doubts resurrection \u2014 sees Jesus' wounds"}, {"year": 52, "lat": 22.3, "lng": 70.8, "note": "Tradition: brings gospel to India"}, {"year": 72, "lat": 13.08, "lng": 80.27, "note": "Martyred near Chennai, India \u2014 speared"}]}, {"name": "Philip", "color": "#ef4444", "era": "New Testament", "born": -2, "died": 80, "positions": [{"year": -2, "lat": 32.906, "lng": 35.629, "note": "Born in Bethsaida"}, {"year": 27, "lat": 32.906, "lng": 35.629, "note": "Called by Jesus \u2014 brings Nathanael"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost in Jerusalem"}, {"year": 35, "lat": 32.279, "lng": 35.195, "note": "Evangelist \u2014 preaches in Samaria"}, {"year": 36, "lat": 31.14, "lng": 34.8, "note": "Leads Ethiopian eunuch to faith on Gaza road"}, {"year": 37, "lat": 32.502, "lng": 34.906, "note": "Settles in Caesarea Maritima \u2014 four daughters"}, {"year": 80, "lat": 37.866, "lng": 29.107, "note": "Tradition: dies in Hierapolis, Phrygia"}]}, {"name": "Matthew", "color": "#ef4444", "era": "New Testament", "born": -2, "died": 70, "positions": [{"year": -2, "lat": 32.881, "lng": 35.575, "note": "Born near Capernaum"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Tax collector at Capernaum \u2014 Jesus calls him"}, {"year": 28, "lat": 32.881, "lng": 35.575, "note": "Hosts great feast for Jesus"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost in Jerusalem"}, {"year": 50, "lat": 31.776, "lng": 35.234, "note": "Writes Gospel in Jerusalem for Jewish believers"}, {"year": 70, "lat": 10.0, "lng": 38.0, "note": "Tradition: martyred in Ethiopia"}]}, {"name": "Nathanael / Bartholomew", "color": "#ef4444", "era": "New Testament", "born": -2, "died": 68, "positions": [{"year": -2, "lat": 32.745, "lng": 35.353, "note": "Born in Cana of Galilee"}, {"year": 27, "lat": 32.745, "lng": 35.353, "note": "Philip brings him to Jesus \u2014 'no guile'"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost in Jerusalem"}, {"year": 50, "lat": 22.3, "lng": 70.8, "note": "Tradition: preaches in India and Armenia"}, {"year": 68, "lat": 39.9, "lng": 49.9, "note": "Tradition: flayed alive in Armenia"}]}, {"name": "Simon the Zealot", "color": "#ef4444", "era": "New Testament", "born": -2, "died": 65, "positions": [{"year": -2, "lat": 32.699, "lng": 35.303, "note": "Born in Galilee \u2014 former Zealot revolutionary"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Called by Jesus as disciple"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Pentecost in Jerusalem"}, {"year": 50, "lat": 27.0, "lng": 30.0, "note": "Tradition: preaches in Egypt and Persia"}, {"year": 65, "lat": 27.0, "lng": 30.0, "note": "Tradition: martyred \u2014 sawn in two"}]}, {"name": "Judas Iscariot", "color": "#ef4444", "era": "New Testament", "born": -4, "died": 30, "positions": [{"year": -4, "lat": 31.561, "lng": 34.847, "note": "Born in Kerioth, Judea \u2014 only non-Galilean disciple"}, {"year": 27, "lat": 32.881, "lng": 35.575, "note": "Chosen as apostle \u2014 treasurer of the group"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Agrees to betray Jesus for 30 pieces of silver"}, {"year": 30, "lat": 31.779, "lng": 35.238, "note": "Betrays Jesus with a kiss at Gethsemane"}, {"year": 30, "lat": 31.77, "lng": 35.227, "note": "Hangs himself \u2014 Field of Blood (Aceldama)"}]}, {"name": "Nicodemus", "color": "#ef4444", "era": "New Testament", "born": -20, "died": 37, "positions": [{"year": -20, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 Pharisee and ruler"}, {"year": 28, "lat": 31.776, "lng": 35.234, "note": "Comes to Jesus by night \u2014 'born again'"}, {"year": 29, "lat": 31.776, "lng": 35.234, "note": "Defends Jesus before the Sanhedrin"}, {"year": 30, "lat": 31.779, "lng": 35.229, "note": "Brings spices for Jesus' burial"}, {"year": 37, "lat": 31.776, "lng": 35.234, "note": "Tradition: baptized by Peter and John \u2014 dies"}]}, {"name": "Lazarus", "color": "#ef4444", "era": "New Testament", "born": -2, "died": 63, "positions": [{"year": -2, "lat": 31.77, "lng": 35.259, "note": "Born in Bethany \u2014 beloved friend of Jesus"}, {"year": 29, "lat": 31.77, "lng": 35.259, "note": "Dies and is raised from dead by Jesus"}, {"year": 30, "lat": 31.77, "lng": 35.259, "note": "Supper in his honor \u2014 Mary anoints Jesus"}, {"year": 32, "lat": 35.126, "lng": 33.43, "note": "Tradition: flees persecution to Cyprus"}, {"year": 45, "lat": 34.757, "lng": 32.407, "note": "Tradition: bishop of Kition (Larnaka) 30 years"}, {"year": 63, "lat": 34.757, "lng": 32.407, "note": "Dies in Cyprus \u2014 second death"}]}, {"name": "Zacchaeus", "color": "#ef4444", "era": "New Testament", "born": -10, "died": 40, "positions": [{"year": -10, "lat": 31.861, "lng": 35.444, "note": "Born in Jericho \u2014 tax collector"}, {"year": 29, "lat": 31.861, "lng": 35.444, "note": "Climbs sycamore tree \u2014 Jesus visits his home"}, {"year": 29, "lat": 31.861, "lng": 35.444, "note": "Gives half to poor \u2014 salvation comes to his house"}, {"year": 40, "lat": 31.861, "lng": 35.444, "note": "Tradition: becomes bishop of Caesarea"}]}, {"name": "Lydia", "color": "#ef4444", "era": "New Testament", "born": 15, "died": 68, "positions": [{"year": 15, "lat": 38.929, "lng": 27.84, "note": "Born in Thyatira \u2014 seller of purple cloth"}, {"year": 50, "lat": 41.013, "lng": 24.287, "note": "Meets Paul at prayer meeting by river in Philippi"}, {"year": 50, "lat": 41.013, "lng": 24.287, "note": "First European convert \u2014 baptised with household"}, {"year": 51, "lat": 41.013, "lng": 24.287, "note": "Hosts the church of Philippi in her home"}, {"year": 68, "lat": 41.013, "lng": 24.287, "note": "Tradition: dies in Philippi"}]}, {"name": "Apollos", "color": "#ef4444", "era": "New Testament", "born": 15, "died": 70, "positions": [{"year": 15, "lat": 31.2, "lng": 29.918, "note": "Born in Alexandria, Egypt \u2014 eloquent and learned"}, {"year": 52, "lat": 37.939, "lng": 27.34, "note": "Preaches in Ephesus \u2014 knows only John's baptism"}, {"year": 52, "lat": 37.939, "lng": 27.34, "note": "Priscilla and Aquila teach him more fully"}, {"year": 53, "lat": 37.906, "lng": 22.882, "note": "Goes to Corinth \u2014 waters where Paul planted"}, {"year": 55, "lat": 31.776, "lng": 35.234, "note": "Mentioned by Paul as fellow worker"}, {"year": 70, "lat": 37.906, "lng": 22.882, "note": "Tradition: bishop of Corinth \u2014 dies"}]}, {"name": "Priscilla & Aquila", "color": "#ef4444", "era": "New Testament", "born": 10, "died": 68, "positions": [{"year": 10, "lat": 41.902, "lng": 12.496, "note": "Born in Rome \u2014 tentmakers"}, {"year": 49, "lat": 37.906, "lng": 22.882, "note": "Expelled from Rome \u2014 settle in Corinth"}, {"year": 51, "lat": 37.906, "lng": 22.882, "note": "Paul joins their tentmaking business"}, {"year": 52, "lat": 37.939, "lng": 27.34, "note": "Move to Ephesus with Paul \u2014 teach Apollos"}, {"year": 58, "lat": 41.902, "lng": 12.496, "note": "Return to Rome \u2014 church in their house"}, {"year": 68, "lat": 37.939, "lng": 27.34, "note": "Back in Ephesus \u2014 greet Timothy"}]}, {"name": "Timothy", "color": "#ef4444", "era": "New Testament", "born": 17, "died": 97, "positions": [{"year": 17, "lat": 37.573, "lng": 32.343, "note": "Born in Lystra \u2014 Greek father, Jewish mother"}, {"year": 47, "lat": 37.573, "lng": 32.343, "note": "Converted when Paul visits Lystra"}, {"year": 49, "lat": 37.573, "lng": 32.343, "note": "Joins Paul's second missionary journey"}, {"year": 51, "lat": 40.64, "lng": 22.944, "note": "Left in Thessalonica to strengthen the church"}, {"year": 53, "lat": 37.906, "lng": 22.882, "note": "Sent to Corinth to represent Paul"}, {"year": 61, "lat": 41.902, "lng": 12.496, "note": "With Paul in Rome during imprisonment"}, {"year": 64, "lat": 37.939, "lng": 27.34, "note": "Leads church in Ephesus \u2014 Paul writes to him"}, {"year": 97, "lat": 37.939, "lng": 27.34, "note": "Tradition: martyred in Ephesus at age 80"}]}, {"name": "Titus", "color": "#ef4444", "era": "New Testament", "born": 15, "died": 96, "positions": [{"year": 15, "lat": 36.202, "lng": 36.16, "note": "Born in Antioch Syria \u2014 Gentile convert"}, {"year": 49, "lat": 31.776, "lng": 35.234, "note": "Accompanies Paul to Jerusalem Council"}, {"year": 56, "lat": 37.906, "lng": 22.882, "note": "Sent to troubled Corinthian church"}, {"year": 63, "lat": 35.24, "lng": 24.808, "note": "Left to organise churches in Crete"}, {"year": 65, "lat": 41.739, "lng": 19.794, "note": "Sent to Dalmatia (Croatia)"}, {"year": 96, "lat": 35.24, "lng": 24.808, "note": "Tradition: dies peacefully in Crete aged 94"}]}, {"name": "Silas / Silvanus", "color": "#ef4444", "era": "New Testament", "born": 10, "died": 65, "positions": [{"year": 10, "lat": 31.776, "lng": 35.234, "note": "Leader in Jerusalem church \u2014 prophet"}, {"year": 49, "lat": 31.776, "lng": 35.234, "note": "Chosen to carry Jerusalem Council letter"}, {"year": 49, "lat": 36.202, "lng": 36.16, "note": "Joins Paul's second journey from Antioch"}, {"year": 50, "lat": 41.013, "lng": 24.287, "note": "Imprisoned with Paul in Philippi \u2014 earthquake"}, {"year": 50, "lat": 40.64, "lng": 22.944, "note": "Preaches in Thessalonica and Berea"}, {"year": 51, "lat": 37.906, "lng": 22.882, "note": "Rejoins Paul in Corinth"}, {"year": 65, "lat": 41.902, "lng": 12.496, "note": "Tradition: dies in Rome"}]}, {"name": "Luke", "color": "#ef4444", "era": "New Testament", "born": 1, "died": 84, "positions": [{"year": 1, "lat": 36.202, "lng": 36.16, "note": "Born in Antioch Syria \u2014 Gentile physician"}, {"year": 50, "lat": 41.013, "lng": 24.287, "note": "Joins Paul at Troas \u2014 'we' passages begin"}, {"year": 57, "lat": 32.502, "lng": 34.906, "note": "Stays in Caesarea during Paul's imprisonment"}, {"year": 60, "lat": 35.937, "lng": 14.375, "note": "Shipwrecked with Paul on Malta"}, {"year": 61, "lat": 41.902, "lng": 12.496, "note": "In Rome with Paul \u2014 writes Acts"}, {"year": 63, "lat": 31.776, "lng": 35.234, "note": "Researches Gospel in Jerusalem"}, {"year": 84, "lat": 37.983, "lng": 23.727, "note": "Tradition: dies in Greece at age 84"}]}, {"name": "Mark / John Mark", "color": "#ef4444", "era": "New Testament", "born": 12, "died": 68, "positions": [{"year": 12, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 Mary his mother's house"}, {"year": 30, "lat": 31.779, "lng": 35.238, "note": "Possibly the young man who fled at Gethsemane"}, {"year": 44, "lat": 31.776, "lng": 35.234, "note": "Travels with Paul and Barnabas to Antioch"}, {"year": 46, "lat": 35.183, "lng": 33.901, "note": "First journey \u2014 turns back at Perga"}, {"year": 49, "lat": 35.126, "lng": 33.43, "note": "Goes with Barnabas to Cyprus"}, {"year": 60, "lat": 41.902, "lng": 12.496, "note": "With Peter in Rome \u2014 writes Gospel of Mark"}, {"year": 63, "lat": 31.2, "lng": 29.918, "note": "Founds church in Alexandria, Egypt"}, {"year": 68, "lat": 31.2, "lng": 29.918, "note": "Martyred in Alexandria \u2014 dragged through streets"}]}, {"name": "Cornelius", "color": "#ef4444", "era": "New Testament", "born": -5, "died": 50, "positions": [{"year": -5, "lat": 41.902, "lng": 12.496, "note": "Born in Rome \u2014 Roman centurion"}, {"year": 30, "lat": 32.502, "lng": 34.906, "note": "Commander of Italian band at Caesarea"}, {"year": 36, "lat": 32.502, "lng": 34.906, "note": "Angel appears \u2014 sends for Peter"}, {"year": 36, "lat": 32.502, "lng": 34.906, "note": "First Gentile convert \u2014 Holy Spirit falls on household"}, {"year": 50, "lat": 32.502, "lng": 34.906, "note": "Dies in Caesarea \u2014 tradition says peacefully"}]}, {"name": "Agabus", "color": "#ef4444", "era": "New Testament", "born": 5, "died": 55, "positions": [{"year": 5, "lat": 31.776, "lng": 35.234, "note": "Prophet from Jerusalem church"}, {"year": 44, "lat": 36.202, "lng": 36.16, "note": "Prophesies great famine coming to Roman world"}, {"year": 57, "lat": 32.502, "lng": 34.906, "note": "Binds himself with Paul's belt \u2014 prophesies arrest"}, {"year": 55, "lat": 31.776, "lng": 35.234, "note": "Tradition: one of the 70 disciples \u2014 dies"}]}, {"name": "Ananias (Damascus)", "color": "#ef4444", "era": "New Testament", "born": 5, "died": 67, "positions": [{"year": 5, "lat": 33.511, "lng": 36.291, "note": "Disciple living in Damascus"}, {"year": 35, "lat": 33.511, "lng": 36.291, "note": "God sends him to pray for blinded Saul"}, {"year": 35, "lat": 33.511, "lng": 36.291, "note": "Baptises Paul \u2014 scales fall from eyes"}, {"year": 67, "lat": 33.511, "lng": 36.291, "note": "Tradition: martyred in Damascus"}]}, {"name": "Philip the Tetrarch", "color": "#7c5cbf", "era": "Kings", "born": -26, "died": 34, "positions": [{"year": -26, "lat": 31.776, "lng": 35.234, "note": "Son of Herod the Great \u2014 born in Jerusalem"}, {"year": -4, "lat": 33.248, "lng": 35.692, "note": "Rules region of Trachonitis \u2014 builds Caesarea Philippi"}, {"year": 20, "lat": 32.906, "lng": 35.629, "note": "Builds and names Bethsaida Julias"}, {"year": 34, "lat": 33.248, "lng": 35.692, "note": "Dies without heir \u2014 territory given to Rome"}]}, {"name": "Herod the Great", "color": "#7c5cbf", "era": "Kings", "born": -73, "died": -4, "positions": [{"year": -73, "lat": 30.329, "lng": 35.441, "note": "Born in Idumea (Edom region)"}, {"year": -47, "lat": 31.776, "lng": 35.234, "note": "Appointed governor of Judea by Julius Caesar"}, {"year": -37, "lat": 31.776, "lng": 35.234, "note": "Becomes king of Judea"}, {"year": -20, "lat": 31.776, "lng": 35.234, "note": "Begins rebuilding the Temple \u2014 massive project"}, {"year": -4, "lat": 31.706, "lng": 35.201, "note": "Orders slaughter of innocents in Bethlehem"}, {"year": -4, "lat": 32.502, "lng": 34.906, "note": "Dies at Caesarea \u2014 horrific illness"}]}, {"name": "Pontius Pilate", "color": "#7c5cbf", "era": "Kings", "born": -20, "died": 39, "positions": [{"year": -20, "lat": 41.902, "lng": 12.496, "note": "Born in Italy \u2014 Roman equestrian class"}, {"year": 26, "lat": 32.502, "lng": 34.906, "note": "Appointed prefect of Judea \u2014 governs from Caesarea"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Judges Jesus \u2014 washes hands \u2014 orders crucifixion"}, {"year": 36, "lat": 32.502, "lng": 34.906, "note": "Recalled to Rome after massacre of Samaritans"}, {"year": 39, "lat": 41.902, "lng": 12.496, "note": "Tradition: exiled \u2014 dies by suicide in Rome"}]}, {"name": "Caiaphas", "color": "#7c5cbf", "era": "Kings", "born": -18, "died": 46, "positions": [{"year": -18, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 priestly family"}, {"year": 18, "lat": 31.776, "lng": 35.234, "note": "Appointed high priest by Valerius Gratus"}, {"year": 29, "lat": 31.776, "lng": 35.234, "note": "Prophesies one man should die for the nation"}, {"year": 30, "lat": 31.776, "lng": 35.234, "note": "Leads trial of Jesus \u2014 tears robes"}, {"year": 36, "lat": 31.776, "lng": 35.234, "note": "Removed from office by Vitellius"}, {"year": 46, "lat": 31.776, "lng": 35.234, "note": "Dies in Jerusalem \u2014 ossuary found 1990"}]}, {"name": "Herod Agrippa I", "color": "#7c5cbf", "era": "Kings", "born": -10, "died": 44, "positions": [{"year": -10, "lat": 31.776, "lng": 35.234, "note": "Born in Jerusalem \u2014 grandson of Herod the Great"}, {"year": 5, "lat": 41.902, "lng": 12.496, "note": "Raised and educated in Rome"}, {"year": 37, "lat": 33.511, "lng": 36.291, "note": "Made king over Philip's territory"}, {"year": 41, "lat": 31.776, "lng": 35.234, "note": "King over all Judea \u2014 beheads James"}, {"year": 44, "lat": 32.502, "lng": 34.906, "note": "Struck dead by angel in Caesarea \u2014 eaten by worms"}]}, {"name": "Job", "color": "#3b82f6", "era": "Prophets", "born": -2000, "died": -1800, "positions": [{"year": -2000, "lat": 29.5, "lng": 36.5, "note": "Born in the land of Uz \u2014 east of Edom/Hauran region"}, {"year": -1980, "lat": 29.5, "lng": 36.5, "note": "Greatest man of the east \u2014 vast wealth and family"}, {"year": -1975, "lat": 29.5, "lng": 36.5, "note": "Satan permitted to afflict Job \u2014 loses all"}, {"year": -1974, "lat": 29.5, "lng": 36.5, "note": "Covered in boils \u2014 sits in ashes"}, {"year": -1973, "lat": 29.5, "lng": 36.5, "note": "Dialogues with Eliphaz, Bildad, Zophar and Elihu"}, {"year": -1972, "lat": 29.5, "lng": 36.5, "note": "God speaks from the whirlwind \u2014 Job restored double"}, {"year": -1800, "lat": 29.5, "lng": 36.5, "note": "Dies at 140 years \u2014 sees four generations"}]}];
+
+// ─── BIBLICAL CHARACTERS & TIMELINE ──────────────────────────────────────────
+
+const ERA_COLORS = {
+  'Patriarchs':    '#c9a227',
+  'Exodus':        '#e07b39',
+  'Judges':        '#22c55e',
+  'Kings':         '#7c5cbf',
+  'Prophets':      '#3b82f6',
+  'New Testament': '#ef4444',
+};
+
+// Interpolate a character's position for a given year
+function interpolatePosition(char, year) {
+  const pts = char.positions;
+  if (!pts.length) return null;
+  if (year < char.born || year > char.died) return null;
+
+  // Find surrounding points
+  let before = null, after = null;
+  for (const p of pts) {
+    if (p.year <= year) before = p;
+    if (p.year >= year && !after) after = p;
+  }
+  if (!before && !after) return null;
+  if (!before) return { lat: after.lat, lng: after.lng, note: after.note };
+  if (!after)  return { lat: before.lat, lng: before.lng, note: before.note };
+  if (before === after) return { lat: before.lat, lng: before.lng, note: before.note };
+
+  // Linear interpolation between the two surrounding points
+  const t = (year - before.year) / (after.year - before.year);
+  return {
+    lat:  before.lat  + (after.lat  - before.lat)  * t,
+    lng:  before.lng  + (after.lng  - before.lng)  * t,
+    note: before.note  // show the note from the last known position
+  };
+}
+
+// SVG person icon
+function personIcon(color, opacity, name) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="28" viewBox="0 0 20 28" style="opacity:${opacity};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6))">
+    <circle cx="10" cy="5" r="4.5" fill="${color}" stroke="white" stroke-width="1.2"/>
+    <path d="M3 28 Q3 16 10 16 Q17 16 17 28Z" fill="${color}" stroke="white" stroke-width="1"/>
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [20, 28],
+    iconAnchor: [10, 28],
+    popupAnchor: [0, -28],
+  });
+}
+
+// Character marker state
+let charMarkers = {}; // name → L.marker
+let timelineActive = false;
+let timelineYear = -2000;
+let playTimer = null;
+let isPlaying = false;
+
+const MIN_YEAR = -2000;
+const MAX_YEAR = 100;
+
+function yearLabel(y) {
+  return y < 0 ? `${Math.abs(y)} BC` : (y === 0 ? '1 AD' : `${y} AD`);
+}
+
+function updateTimeline(year) {
+  timelineYear = year;
+  document.getElementById('tlYearLabel').textContent = yearLabel(year);
+  document.getElementById('tlSlider').value = year;
+
+  CHARACTERS.forEach(char => {
+    const pos = interpolatePosition(char, year);
+    const alpha = getCharAlpha(char, year);
+
+    if (alpha <= 0) {
+      // Remove marker if fully faded out
+      if (charMarkers[char.name]) {
+        map.removeLayer(charMarkers[char.name]);
+        delete charMarkers[char.name];
+      }
+      return;
+    }
+
+    const icon = personIcon(char.color, alpha, char.name);
+    const popupHtml = `
+      <div class="popup-name" style="color:${char.color}">${char.name}</div>
+      <div class="popup-region">${char.era} · ${yearLabel(year)}</div>
+      <div class="popup-desc">${pos.note}</div>
+    `;
+
+    if (charMarkers[char.name]) {
+      charMarkers[char.name].setLatLng([pos.lat, pos.lng]);
+      charMarkers[char.name].setIcon(icon);
+      charMarkers[char.name].getPopup()?.setContent(popupHtml);
+    } else {
+      const m = L.marker([pos.lat, pos.lng], { icon, zIndexOffset: 500 })
+        .bindPopup(popupHtml, { maxWidth: 220 });
+      m.addTo(map);
+      charMarkers[char.name] = m;
+    }
+  });
+}
+
+function getCharAlpha(char, year) {
+  const FADE = 15; // years to fade in/out
+  if (year < char.born - FADE || year > char.died + FADE) return 0;
+  if (year < char.born) return (year - (char.born - FADE)) / FADE;
+  if (year > char.died) return 1 - (year - char.died) / FADE;
+  return 1;
+}
+
+function toggleTimeline() {
+  timelineActive = !timelineActive;
+  const panel = document.getElementById('timelinePanel');
+  const btn = document.getElementById('tlToggleBtn');
+  panel.style.display = timelineActive ? 'flex' : 'none';
+  btn.classList.toggle('active', timelineActive);
+  if (!timelineActive) {
+    stopPlay();
+    // Remove all character markers
+    Object.values(charMarkers).forEach(m => map.removeLayer(m));
+    charMarkers = {};
+  } else {
+    updateTimeline(timelineYear);
+  }
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    stopPlay();
+  } else {
+    startPlay();
+  }
+}
+
+function startPlay() {
+  isPlaying = true;
+  document.getElementById('tlPlayBtn').textContent = '⏸';
+  playTimer = setInterval(() => {
+    let next = timelineYear + 2;
+    if (next > MAX_YEAR) next = MIN_YEAR;
+    updateTimeline(next);
+  }, 80);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  document.getElementById('tlPlayBtn').textContent = '▶';
+}
+
+function onSliderInput(val) {
+  stopPlay();
+  updateTimeline(parseInt(val));
+}
+
+// Era filter for timeline
+let activeEras = new Set(Object.keys(ERA_COLORS).concat(['Patriarchs','Exodus','Judges','Kings','Prophets','New Testament']));
+
+function toggleEra(era, btn) {
+  if (activeEras.has(era)) {
+    activeEras.delete(era);
+    btn.style.opacity = '0.35';
+  } else {
+    activeEras.add(era);
+    btn.style.opacity = '1';
+  }
+  // Rebuild CHARACTERS filter - only show active eras
+  updateTimeline(timelineYear);
+}
+
+
+// Build era filter buttons in timeline panel
+(function() {
+  const eras = [...new Set(CHARACTERS.map(c=>c.era))];
+  const container = document.getElementById('tlEras');
+  if(!container) return;
+  eras.forEach(era => {
+    const col = ERA_COLORS[era] || '#94a3b8';
+    const btn = document.createElement('button');
+    btn.className = 'tl-era-btn';
+    btn.textContent = era;
+    btn.style.borderColor = col;
+    btn.style.color = col;
+    btn.dataset.era = era;
+    btn.onclick = function(){ toggleEra(era, this); };
+    container.appendChild(btn);
+  });
+})();
+
+
+
+// ── CHARACTER SIDEBAR LIST ────────────────────────────────────────────────────
+let selectedChar = null;
+let charJourneyLayer = null;
+let charJourneyMarkers = [];
+
+function renderCharList() {
+  const el = document.getElementById('charList');
+  if (!el) return;
+  el.innerHTML = '';
+  // Group by era
+  const eras = [...new Set(CHARACTERS.map(c=>c.era))];
+  for (const era of eras) {
+    const chars = CHARACTERS.filter(c=>c.era===era);
+    // Era header
+    const hdr = document.createElement('div');
+    hdr.className = 'char-era-header';
+    hdr.innerHTML = `<span style="color:${ERA_COLORS[era]}">${era}</span><div class="char-era-line"></div>`;
+    el.appendChild(hdr);
+    // Characters
+    for (const char of chars) {
+      const item = document.createElement('div');
+      item.className = 'char-item' + (selectedChar===char.name?' active':'');
+      item.style.borderLeftColor = char.color;
+      const bornLbl = char.born < 0 ? `${Math.abs(char.born)} BC` : `${char.born} AD`;
+      const diedLbl = char.died < 0 ? `${Math.abs(char.died)} BC` : `${char.died} AD`;
+      item.innerHTML = `<div class="char-dot" style="background:${char.color}"></div>
+        <span class="char-name">${char.name}</span>
+        <span class="char-years">${bornLbl}–${diedLbl}</span>`;
+      item.addEventListener('click', () => selectCharacter(char.name));
+      el.appendChild(item);
+    }
+  }
+}
+
+function selectCharacter(name) {
+  // Clear previous journey
+  clearCharJourney();
+
+  const char = CHARACTERS.find(c=>c.name===name);
+  if (!char) return;
+
+  selectedChar = name;
+  renderCharList();
+
+  // Jump timeline to character's birth
+  if (timelineActive) {
+    updateTimeline(char.born);
+    document.getElementById('tlSlider').value = char.born;
+    document.getElementById('tlYearLabel').textContent = yearLabel(char.born);
+  }
+
+  // Draw journey line connecting all known positions in order
+  const latlngs = char.positions.map(p=>[p.lat, p.lng]);
+  if (latlngs.length > 1) {
+    charJourneyLayer = L.polyline(latlngs, {
+      color: char.color, weight: 2.5, opacity: 0.7,
+      dashArray: '5,4'
+    }).addTo(map);
+  }
+
+  // Add numbered waypoint markers for each position
+  char.positions.forEach((pos, i) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="9" fill="${char.color}" stroke="white" stroke-width="1.5"/>
+      <text x="10" y="14" text-anchor="middle" font-size="9" font-weight="bold"
+        fill="white" font-family="sans-serif">${i+1}</text>
+    </svg>`;
+    const icon = L.divIcon({html:svg, className:'', iconSize:[20,20], iconAnchor:[10,10], popupAnchor:[0,-12]});
+    const bornLbl = pos.year < 0 ? `${Math.abs(pos.year)} BC` : `${pos.year} AD`;
+    const m = L.marker([pos.lat, pos.lng], {icon, zIndexOffset:600})
+      .bindPopup(`<div class="popup-name" style="color:${char.color}">${char.name}</div>
+        <div class="popup-region">${bornLbl}</div>
+        <div class="popup-desc">${pos.note}</div>`)
+      .addTo(map);
+    charJourneyMarkers.push(m);
+  });
+
+  // Fit map to journey
+  if (latlngs.length) {
+    map.fitBounds(L.latLngBounds(latlngs), {padding:[60,60]});
+  }
+}
+
+function clearCharJourney() {
+  if (charJourneyLayer) { map.removeLayer(charJourneyLayer); charJourneyLayer = null; }
+  charJourneyMarkers.forEach(m => map.removeLayer(m));
+  charJourneyMarkers = [];
+}
+
+
+let placesVisible = true;
+function togglePlaceMarkers(btn) {
+  placesVisible = !placesVisible;
+  btn.classList.toggle('active', placesVisible);
+  PLACES.forEach((p, i) => {
+    if (!markers[i]) return;
+    if (placesVisible) {
+      // Restore only those allowed by current filter
+      if (activeFilter === 'all' || p.rg === activeFilter) {
+        if (!map.hasLayer(markers[i])) markers[i].addTo(map);
+      }
+    } else {
+      if (map.hasLayer(markers[i])) map.removeLayer(markers[i]);
+    }
+  });
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+addMarkers();
+updateStats();
+renderList();
+initDirections();
+renderCharList();
+</script>
+
+<!-- Timeline Panel -->
+<div id="timelinePanel">
+  <div class="tl-top">
+    <button id="tlPlayBtn" onclick="togglePlay()">▶</button>
+    <span id="tlYearLabel">2000 BC</span>
+    <input id="tlSlider" type="range" min="-2000" max="100" value="-2000"
+      oninput="onSliderInput(this.value)" style="flex:1"/>
+    <span style="font-size:0.60rem;color:var(--muted)">100 AD</span>
+  </div>
+  <div class="tl-eras" id="tlEras"></div>
+</div>
+
+</body>
+</html>
